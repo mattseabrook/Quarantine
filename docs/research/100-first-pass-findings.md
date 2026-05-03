@@ -68,6 +68,8 @@ Status: likely 25-byte header plus 49152 bytes of raw 8-bit indexed image data f
 
 This detector is intentionally broad and currently noisy. Palette candidates should not be considered confirmed until applied to decoded sprite or image pixels and visually verified.
 
+`qscan` reported 8284 palette candidates while `qpalette` reported 6681. This is expected: both scan candidate 768-byte blocks, but the tools use different per-file candidate caps (`qscan` kept up to 25 per file in the first pass; `qpalette` emitted up to 20 per file).
+
 Next palette work should prioritize:
 
 - palettes embedded in `IMAGEX` GIF files
@@ -126,6 +128,41 @@ All match:
 ```
 
 `.BLK` and `.BSP` files have low-to-moderate entropy and are likely structured binary tables rather than compressed payloads. `qmapprobe` generated candidate fixed-record CSVs for record sizes 2, 4, 6, 8, 10, 12, 16, 20, 24, and 32 bytes.
+
+## MAP View Status
+
+`qmapview` rendered false-color previews for all six city maps. The images clearly show coherent city layouts, so the map dimensions and tile ordering are correct.
+
+Raw unique tile counts:
+
+- `CITY.MAP`: 493
+- `JCITY.MAP`: 444
+- `KCITY.MAP`: 749
+- `PCITY.MAP`: 279
+- `SCITY.MAP`: 13
+- `WCITY.MAP`: 295
+
+Raw tile values sometimes exceed plausible direct `.BLK` record counts, which suggests the 16-bit map tile is likely not a plain direct record index. The next test is masked/flagged interpretations such as low 8, 10, 12, or 14 bits.
+
+## Wall Split Status
+
+`qsprwall` processed 83 wall `.SPR` files. Each 49177-byte file split into:
+
+- 25-byte header
+- `frame_0_gray.png` as `128x128`
+- `frame_1_gray.png` as `128x128`
+- `frame_2_gray.png` as `128x128`
+- `contact_sheet_gray.png`
+
+The three-frame contact sheets are coherent wall texture imagery.
+
+Header comparison found one identical header group across all 83 files:
+
+```text
+0c 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40
+```
+
+This makes per-file palette ID or texture ID metadata in the wall header unlikely. The header more likely encodes fixed package/layout metadata or a loader sentinel.
 
 ## Next Files To Investigate
 

@@ -17,7 +17,21 @@ Likely spatial partition, collision, or visibility helper data.
 
 ## Observed Sizes
 
-Pending `qscan` and `qmapprobe` output.
+`qscan` observed 6 `.BSP` files totaling 115718 bytes.
+
+Observed `.BSP` size range:
+
+- Minimum: 2003 bytes (`SCITY.BSP`)
+- Maximum: 41877 bytes (`JCITY.BSP`)
+
+Per-city sizes:
+
+- `CITY.BSP`: 19932 bytes
+- `JCITY.BSP`: 41877 bytes
+- `KCITY.BSP`: 30159 bytes
+- `PCITY.BSP`: 7000 bytes
+- `SCITY.BSP`: 2003 bytes
+- `WCITY.BSP`: 14747 bytes
 
 ## Header Observations
 
@@ -26,6 +40,8 @@ Unknown.
 ## Payload Observations
 
 Use `qmapprobe` record-size CSV output for candidate table structures.
+
+First-pass entropy is low, which suggests structured binary data rather than compressed data.
 
 ## Candidate Dimensions / Structures
 

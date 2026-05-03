@@ -15,7 +15,14 @@ Examples include:
 
 ## Observed Sizes
 
-Pending `qscan` output.
+`qscan` observed 4 `.KPG` files totaling 127581 bytes.
+
+Observed `.KPG` size range:
+
+- Minimum: 30897 bytes
+- Maximum: 33075 bytes
+
+Known observed sizes are tightly clustered, suggesting related resource payloads.
 
 ## Header Observations
 
