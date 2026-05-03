@@ -75,6 +75,18 @@ First `qmapview` results:
 
 Raw tile values can exceed plausible direct `.BLK` record counts, with examples such as `0xB022` and `0xF102`. This suggests the 16-bit tile value may contain flags plus an index rather than a direct record index. `qmapview` therefore reports masked candidate interpretations such as `low_8`, `low_10`, `low_12`, and `low_14`.
 
+`qmapview` now emits additional false-color maps for:
+
+- raw tile value
+- low 8 bits
+- low 10 bits
+- low 12 bits
+- low 14 bits
+- high byte
+- high nibble
+
+It also writes `tile_bit_report.json` to expose per-bit frequencies.
+
 ## Runtime Load Evidence
 
 Pending DOSBox-X file I/O traces.

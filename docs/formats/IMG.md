@@ -30,6 +30,11 @@ Observed `.IMG` size range:
 
 43 files start with `IMAGEX` and decode as modified GIFs after in-memory signature restoration.
 
+`qimginfo` checked GIF frame counts for all `.IMG` files:
+
+- Animated `IMAGEX`/GIF files: 0
+- All 43 confirmed `IMAGEX` files are single-frame 320x200 images.
+
 The five non-`IMAGEX` `.IMG` files are small ASCII-like structured files:
 
 - `MISSIL0.IMG`

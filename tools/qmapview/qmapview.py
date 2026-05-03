@@ -102,6 +102,49 @@ def draw_map_png(path: Path, width: int, height: int, values: list[int], scale: 
     image.save(path)
 
 
+def derived_values(values: list[int]) -> dict[str, list[int]]:
+    return {
+        "raw": values,
+        "low8": [value & 0x00FF for value in values],
+        "low10": [value & 0x03FF for value in values],
+        "low12": [value & 0x0FFF for value in values],
+        "low14": [value & 0x3FFF for value in values],
+        "high_byte": [(value >> 8) & 0x00FF for value in values],
+        "high_nibble": [(value >> 12) & 0x000F for value in values],
+    }
+
+
+def bit_report(values: list[int]) -> dict[str, Any]:
+    rows: dict[str, Any] = {}
+    for name, current_values in derived_values(values).items():
+        counts = Counter(current_values)
+        unique = sorted(counts)
+        rows[name] = {
+            "unique_count": len(unique),
+            "min": min(unique) if unique else None,
+            "max": max(unique) if unique else None,
+            "frequencies": [
+                {"value": value, "hex": f"0x{value:04X}", "count": counts[value]}
+                for value in sorted(unique, key=lambda item: (-counts[item], item))
+            ],
+        }
+    bit_counts = []
+    total = len(values)
+    for bit in range(16):
+        set_count = sum(1 for value in values if value & (1 << bit))
+        bit_counts.append(
+            {
+                "bit": bit,
+                "mask_hex": f"0x{1 << bit:04X}",
+                "set_count": set_count,
+                "clear_count": total - set_count,
+                "set_ratio": round(set_count / total, 6) if total else 0.0,
+            }
+        )
+    rows["bit_counts"] = bit_counts
+    return rows
+
+
 def write_values_csv(path: Path, width: int, height: int, values: list[int]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
@@ -266,11 +309,20 @@ def process_map(map_path: Path, output_root: Path, scale: int, draw_values: bool
     falsecolor = out_dir / "map_falsecolor.png"
     values_csv = out_dir / "map_values.csv"
     freq_json = out_dir / "tile_frequency.json"
+    bit_json = out_dir / "tile_bit_report.json"
     summary_md = out_dir / "summary.md"
 
     draw_map_png(falsecolor, parsed["width"], parsed["height"], parsed["values"], scale, draw_values)
+    mask_outputs = {}
+    for name, current_values in derived_values(parsed["values"]).items():
+        if name == "raw":
+            continue
+        mask_path = out_dir / f"map_{name}_falsecolor.png"
+        draw_map_png(mask_path, parsed["width"], parsed["height"], current_values, scale, draw_values and name in {"low8", "low10"})
+        mask_outputs[name] = mask_path.as_posix()
     write_values_csv(values_csv, parsed["width"], parsed["height"], parsed["values"])
     write_json(freq_json, freq)
+    write_json(bit_json, bit_report(parsed["values"]))
     write_summary(summary_md, map_path, parsed, freq)
 
     manifest = {
@@ -282,8 +334,10 @@ def process_map(map_path: Path, output_root: Path, scale: int, draw_values: bool
         "unique_tile_count": freq["unique_tile_count"],
         "outputs": {
             "map_falsecolor": falsecolor.as_posix(),
+            "mask_falsecolors": mask_outputs,
             "map_values_csv": values_csv.as_posix(),
             "tile_frequency_json": freq_json.as_posix(),
+            "tile_bit_report_json": bit_json.as_posix(),
             "summary": summary_md.as_posix(),
         },
     }
