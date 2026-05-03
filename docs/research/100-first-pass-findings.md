@@ -81,6 +81,8 @@ Next palette work should prioritize:
 
 43 of 48 `.IMG` files are confirmed as `IMAGEX` modified GIF files by header and Pillow decode after in-memory signature replacement.
 
+`qimginfo` checked frame counts. None of the confirmed `IMAGEX` files are animated; all 43 are single-frame images.
+
 Sample decoded preview dimensions:
 
 - `TITLE.IMG`: 320x200
