@@ -12,11 +12,16 @@ Many sound effects use `.VOC`, including vehicle, weapon, voice, and UI sounds.
 
 ## Observed Sizes
 
-Pending `qscan` output.
+`qscan` observed 38 `.VOC` files totaling 564100 bytes.
+
+Observed `.VOC` size range:
+
+- Minimum: 1105 bytes
+- Maximum: 89287 bytes
 
 ## Header Observations
 
-Creative Voice files usually begin with:
+The observed `.VOC` files begin with the Creative Voice signature:
 
 ```text
 Creative Voice File

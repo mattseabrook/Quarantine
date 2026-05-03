@@ -10,7 +10,12 @@ Examples include animation, object, floor, texture, sound, and configuration dat
 
 ## Observed Sizes
 
-Pending `qscan` output.
+`qscan` observed 40 `.DAT` files totaling 14743 bytes.
+
+Observed `.DAT` size range:
+
+- Minimum: 1 byte
+- Maximum: 1840 bytes
 
 ## Header Observations
 
@@ -18,7 +23,7 @@ Unknown.
 
 ## Payload Observations
 
-Likely multiple unrelated table formats share the `.DAT` extension.
+Likely multiple unrelated table formats share the `.DAT` extension. The small sizes suggest parameter tables, lookup tables, and configuration records rather than bulk asset payloads.
 
 ## Candidate Dimensions / Structures
 

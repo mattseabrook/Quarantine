@@ -15,7 +15,19 @@ Examples include:
 
 ## Observed Sizes
 
-Pending `qscan` output.
+`qscan` observed 4 `.ZZZ` files totaling 29521 bytes.
+
+Observed `.ZZZ` size range:
+
+- Minimum: 7081 bytes
+- Maximum: 7833 bytes
+
+Known observed sizes are tightly clustered:
+
+- `KEMOMAP1.ZZZ`
+- `KEMOMAP2.ZZZ`
+- `KEMOMAP3.ZZZ`
+- `KEMOMAP4.ZZZ`
 
 ## Header Observations
 
