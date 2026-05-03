@@ -259,6 +259,57 @@ _pkginfo.txt
 # but keep track of directories ending in .cache
 !?*.[Cc]ache/
 
+# Quarantine Engine Lab generated analysis
+analysis/*
+!analysis/.keep
+
+# Local game data / private files. These may exist in a private working tree,
+# but must not be committed to the preservation lab source history.
+/MS-DOS/
+/external-not-in-repo/
+.env
+*.iso
+*.ISO
+*.bin
+*.BIN
+*.cue
+*.CUE
+*.img
+*.IMG
+*.spr
+*.SPR
+*.voc
+*.VOC
+*.fli
+*.FLI
+*.avi
+*.AVI
+*.exe
+*.EXE
+*.dat
+*.DAT
+*.map
+*.MAP
+*.blk
+*.BLK
+*.bsp
+*.BSP
+*.enc
+*.ENC
+*.kpg
+*.KPG
+*.zzz
+*.ZZZ
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Native/build output
+build/
+dist/
+
 # Others
 ClientBin/
 ~$*
