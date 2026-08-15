@@ -1,0 +1,9 @@
+; Explicit bytes at raw offsets 00067F98..00067FAC.
+%macro emit_data_0559_00067f98 0
+    %%chunk_start:
+    db 0xCB, 0xD9, 0x03, 0x00, 0x0D, 0xDA, 0x03, 0x00, 0x52, 0xDA, 0x03, 0x00, 0x91, 0xDA, 0x03, 0x00 ; raw 00067F98 |........R.......|
+    db 0xD6, 0xDA, 0x03, 0x00 ; raw 00067FA8 |....|
+    %if ($ - %%chunk_start) != 20
+        %error "data size drift: raw 00067F98"
+    %endif
+%endmacro

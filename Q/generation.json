@@ -1,0 +1,16 @@
+{
+  "address_format": "hex",
+  "bits": 32,
+  "canonical_output": "build/SKIPIT-rebuilt.exe",
+  "exact_encoding_fallback_count": 1457,
+  "function_count": 1014,
+  "instruction_count": 70273,
+  "origin": 65536,
+  "prefix_size": 173568,
+  "reference_name": "SKIPIT.EXE",
+  "reference_sha256": "27039b622c990d9e56fbc3c5213137828550f3b6c4e0534a29870eec0e024ba1",
+  "reference_size": 572501,
+  "schema": 1,
+  "segment_base": 0,
+  "title": "Quarantine MS-DOS retail SKIPIT.EXE"
+}
