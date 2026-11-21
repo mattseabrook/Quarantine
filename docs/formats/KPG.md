@@ -2,7 +2,8 @@
 
 ## Status
 
-Unknown / investigating.
+Planar delta animation verified through the retail player and all four files.
+See the [root format table](../../README.md#kpg).
 
 ## Known Files
 
@@ -26,21 +27,24 @@ Known observed sizes are tightly clustered, suggesting related resource payloads
 
 ## Header Observations
 
-Unknown.
+Two little-endian words contain the observed value `1` and a playback
+limit of 33. The engine subtracts one from the limit.
 
 ## Payload Observations
 
-Unknown. Candidate packed, compressed, graphics, or map data.
+The 32 frames are individually prefixed by a two-byte packed length. Each
+block expands through the KPG/ZZZ decoder at `0x44A90`.
 
 ## Candidate Dimensions / Structures
 
-Use `qscan`, `qpalette`, and external inspection tools such as `binwalk` only for identification. Do not extract or commit copyrighted asset payloads.
+Each expanded block advances exactly 16,000 VGA addresses. A positive
+signed span skips addresses, and a negative span supplies literals for all
+four planes.
 
 ## Runtime Load Evidence
 
-Pending DOSBox-X file I/O traces.
+`0x24F3C` plays the garage and gate animations and rotates the VGA pages.
 
 ## Open Questions
 
-- Is `.KPG` compressed?
-- Does it contain graphics, palette data, maps, or UI resources?
+- What was the author's name for the initial `u16` word?

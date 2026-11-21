@@ -1,3 +1,12 @@
 MS-DOS/
 research/
-Q/build/
+# Audio files — exclude everywhere
+*.flac
+
+# Entire MS-DOS directory
+/MS-DOS/
+
+# PlayStation disc images
+/PS1/*.bin
+
+Quarantine-codes.jpg

@@ -2,9 +2,8 @@
 
 ## Status
 
-Unknown / investigating.
-
-Likely spatial partition, collision, or visibility helper data.
+Partition output identified from the district loader and tree builder.
+See the [root format table](../../README.md#bsp).
 
 ## Known Files
 
@@ -35,25 +34,24 @@ Per-city sizes:
 
 ## Header Observations
 
-Unknown.
+The observed writer emits split and partition bytes directly.
 
 ## Payload Observations
 
-Use `qmapprobe` record-size CSV output for candidate table structures.
-
-First-pass entropy is low, which suggests structured binary data rather than compressed data.
+The builder emits the ordinal of a selected split item, followed by one
+side byte for each remaining item. It then recurses on the two child lists.
 
 ## Candidate Dimensions / Structures
 
-Candidate fixed record sizes:
-
-- 2, 4, 6, 8, 10, 12, 16, 20, 24, 32 bytes
+Runtime nodes occupy `0x24` bytes and include child pointers. On-disk
+partition decisions are byte-sized.
 
 ## Runtime Load Evidence
 
-Pending DOSBox-X file I/O traces.
+`0x3EF9C` opens the district path in `wb` mode. `0x3F2B0` builds
+the runtime tree and writes the decisions to that file.
 
 ## Open Questions
 
-- Is this a true binary space partition tree?
-- Does it represent visibility, collision, walls, or route planning?
+- Can the retail files be regenerated exactly from the corresponding BLK files?
+- Which geometry and collision paths consume the in-memory tree?

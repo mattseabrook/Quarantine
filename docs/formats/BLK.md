@@ -2,9 +2,10 @@
 
 ## Status
 
-Unknown / investigating.
-
-Likely city block, tile, or world geometry data.
+Version 1 layout verified against all six files and the district loader.
+The [root format table](../../README.md#blk) describes the header, slot
+directory, and four record groups. Individual geometry field names remain
+under analysis.
 
 ## Known Files
 
@@ -35,23 +36,24 @@ Per-city sizes:
 
 ## Header Observations
 
-Unknown.
+Two little-endian words identify the version and slot count. All six files
+use version 1 and 128 slots. Four little-endian counts per slot follow.
 
 ## Payload Observations
 
-Use `qmapprobe` record-size CSV output for candidate table structures.
-
-First-pass entropy is low-to-moderate, which suggests structured binary tables rather than compressed data.
+Each slot stores four groups in directory order, with record widths of
+18, 18, 2, and 12 bytes. The counted payloads and directory consume the
+entire file in all six cases.
 
 ## Candidate Dimensions / Structures
 
-Candidate fixed record sizes:
-
-- 2, 4, 6, 8, 10, 12, 16, 20, 24, 32 bytes
+The third group contains byte pairs used to look up texture flags.
 
 ## Runtime Load Evidence
 
-Pending DOSBox-X file I/O traces.
+`0x4289C` reads the selected district's BLK and builds its BSP nodes.
+The four payload reads begin at `0x42C7B`, `0x42CC4`, `0x42D10`, and
+`0x42DF8`.
 
 ## Open Questions
 

@@ -2,7 +2,8 @@
 
 ## Status
 
-Unknown / investigating.
+Packed map overlay layout verified through the loader and all four files.
+See the [root format table](../../README.md#zzz).
 
 ## Known Files
 
@@ -31,21 +32,23 @@ Known observed sizes are tightly clustered:
 
 ## Header Observations
 
-Unknown.
+The first 768 bytes contain 256 RGB triples in the six-bit VGA DAC range.
 
 ## Payload Observations
 
-Unknown. Candidate packed, compressed, graphics, or map data.
+The remaining bytes use the shared KPG/ZZZ backreference codec at
+`0x44A90`. Every retail overlay expands to 64,000 index bytes.
 
 ## Candidate Dimensions / Structures
 
-Use `qscan` entropy and header output first.
+The decoder's output is a full screen of pixel indices. The map code
+places the four layers at different VGA start addresses.
 
 ## Runtime Load Evidence
 
-Pending DOSBox-X file I/O traces.
+The map view calls loader `0x44A30` for each layer at call sites
+`0x504AE` through `0x5051D`.
 
 ## Open Questions
 
-- Does `.ZZZ` contain alternate map data?
-- Is it compressed or merely named as a special resource group?
+- How do the four layers relate to the map's movement and icon placement?
