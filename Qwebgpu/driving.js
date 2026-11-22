@@ -4,6 +4,8 @@ import {cabBody, chaseRange} from './cab-dimensions.js';
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
 export const ticksPerSecond = 35;
 const fullTurn = 5760, quarter = 1440;
+const cabinYawLimit = 100*Math.PI/180;
+const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
 function sine(table, angle) {
   const a = wrap(angle);
@@ -15,16 +17,26 @@ function sine(table, angle) {
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
-    speed: 0, steering: 0, camera: 0, lookYaw: 0, orbitYaw: 0, chaseDistance: chaseRange.middle};
+    speed: 0, steering: 0, camera: 0, lookYaw: 0, orbitYaw: 0, chasePitch: null, chaseDistance: chaseRange.middle};
 }
 
-export function turnView(car, movementX) {
+function chaseLift(distance) {
+  const {near,middle,far} = chaseRange;
+  return distance <= middle ? 40+30*(distance-near)/(middle-near) :
+    70+40*(distance-middle)/(far-middle);
+}
+
+export function turnView(car, movementX, movementY = 0) {
   const delta = -movementX*0.0025;
   if (car.camera) {
     car.orbitYaw = (car.orbitYaw+delta) % (2*Math.PI);
+    if (movementY) {
+      const distance = car.chaseDistance;
+      const pitch = car.chasePitch ?? Math.atan2(chaseLift(distance),distance);
+      car.chasePitch = Math.max(-chasePitchLimit,Math.min(chasePitchLimit,pitch+movementY*0.0025));
+    }
   } else {
-    const limit = Math.PI/2;
-    car.lookYaw = Math.max(-limit,Math.min(limit,car.lookYaw+delta));
+    car.lookYaw = Math.max(-cabinYawLimit,Math.min(cabinYawLimit,car.lookYaw+delta));
   }
 }
 
@@ -174,9 +186,7 @@ export function cameraPose(car, district) {
   const fx = Math.sin(angle), fy = Math.cos(angle);
   if (!car.camera) return {x:car.x,y:car.y,z:car.z,fx,fy,angle,pitch:0};
   const distance = car.chaseDistance;
-  const {near,middle,far} = chaseRange;
-  const lift = distance <= middle ? 40+30*(distance-near)/(middle-near) :
-    70+40*(distance-middle)/(far-middle);
+  const lift = chaseLift(distance);
   const targetZ = car.z+cabBody.base-cabBody.height/2;
   let clear = 0;
   for (let d = 8; d < distance+8; d += 8) {
@@ -185,5 +195,5 @@ export function cameraPose(car, district) {
     clear = step;
   }
   return {x:car.x-fx*clear,y:car.y-fy*clear,z:targetZ-lift*clear/distance,
-    fx,fy,angle,pitch:Math.atan2(lift,distance)};
+    fx,fy,angle,pitch:car.chasePitch ?? Math.atan2(lift,distance)};
 }

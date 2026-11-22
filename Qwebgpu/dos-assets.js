@@ -34,8 +34,6 @@ export function readPromptTables(bytes) {
     district, map: asset(0x66b0), blocks: asset(0xadac), floor: asset(0x6680), sky: asset(0x6698),
     panorama: bytes[base+0x97aa+district] !== 0,
     wallBanks: Array.from({length: 16}, (_, i) => stringAt(0x64e8 + district * 64 + i * 4).toUpperCase()),
-    viewCells: Array.from({length:49}, (_, i) => [
-      view.getInt16(base+0xa9ba+4*i,true), view.getInt16(base+0xa9bc+4*i,true)]),
     shadeWeights: Array.from({length:16}, (_, i) => view.getInt16(base+0x8c5a+2*i,true)),
     depthBands: bytes.slice(base+0x8c7a,base+0x8c7a+64),
     x: view.getInt16(start, true) * 512 + 256, y: view.getInt16(start + 2, true) * 512 + 256,

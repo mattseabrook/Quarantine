@@ -1,4 +1,4 @@
-import {districtMesh, cockpitTexture, wallFlags} from './district-mesh.js';
+import {districtMesh, cockpitTexture, wallFlags, wallDepthLayers} from './district-mesh.js';
 import {readScreen, readSpriteBank} from './indexed-screen.js';
 import {readMaskFont} from './intro.js';
 
@@ -47,6 +47,7 @@ function readBlocks(bytes, name) {
       // A negative material selector consumes a separate pair for each horizontal section.
       for (let k = 0; k < across; k++) {
         const steps = across === 1 ? repeats : 1;
+        if (!steps || !height || (!dx && !dy)) continue;
         const ax = x+k*dx, ay = y+k*dy, bx = ax+steps*dx, by = ay+steps*dy;
         faces.push({vertices: [[ax,ay,z-height],[bx,by,z-height],[bx,by,z],[ax,ay,z]],
           material: material+k, frontMaterial: material+across-1-k,
@@ -138,7 +139,7 @@ async function prepare(part, files, start) {
     return {value:{...grid,collision,triggers}, transfer:[grid.tiles.buffer,collision.buffer,triggers.buffer]};
   }
   const textureName = 'TEXTURE'+start.district+'.DAT';
-  const [blocks,floor,sky,banks,flags,shadeConfig] = await Promise.all([
+  const [blocks,floor,sky,banks,flags,shadeConfig,map] = await Promise.all([
     bytes(start.blocks).then(raw => readBlocks(raw,start.blocks)), image(start.floor), image(start.sky),
     Promise.all(start.wallBanks.map(async name => {
       const raw = await bytes(name);
@@ -146,10 +147,12 @@ async function prepare(part, files, start) {
     })),
     bytes(textureName).then(raw => readTextureFlags(raw,textureName)),
     bytes('DATA'+start.district+'.DAT'),
+    bytes(start.map),
   ]);
   const {palette,flatSkyIndex} = streetPalette(floor.dac,shadeConfig,start);
   const mesh = districtMesh({blocks,floor,sky,banks,flags,districtId:start.district,
     bankNames:start.wallBanks,panorama:start.panorama,flatSkyIndex});
+  const wallDepth = wallDepthLayers(blocks,readMap(map,start.map),flags);
   // The CPU driver only needs vertical segments. Send flat collision arrays,
   // leaving the full face and texture objects in this short-lived worker.
   const wallOffsets = new Uint32Array(blocks.length*4+1), segments = [], solidFlags = [];
@@ -161,6 +164,7 @@ async function prepare(part, files, start) {
             (wallFlags(block,variant,face.material,flags) & 8)) continue;
         const [a,b,c] = face.vertices;
         segments.push(a[0],a[1],b[0]-a[0],b[1]-a[1],Math.min(a[2],c[2]),Math.max(a[2],c[2]));
+        solidFlags.push(wallFlags(block,variant,face.sideMaterial,flags));
       }
     }
   });
@@ -168,8 +172,9 @@ async function prepare(part, files, start) {
   const walls = new Float32Array(segments);
   const wallSides = Uint8Array.from(solidFlags);
   const diagnostics = {blocks,flags,bankSizes:banks.map(bank => bank.length)};
-  return {value:{mesh,palette,walls,wallOffsets,wallSides,diagnostics},
-    transfer:[mesh.atlas.buffer,mesh.vertices.buffer,palette.buffer,walls.buffer,wallOffsets.buffer,wallSides.buffer,flags.buffer]};
+  return {value:{mesh,palette,walls,wallOffsets,wallSides,wallDepth,diagnostics},
+    transfer:[mesh.atlas.buffer,mesh.vertices.buffer,palette.buffer,walls.buffer,wallOffsets.buffer,
+      wallSides.buffer,wallDepth.buffer,flags.buffer]};
 }
 
 self.onmessage = async ({data:{part,files,start}}) => {

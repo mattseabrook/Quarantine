@@ -20,7 +20,7 @@ const status = document.querySelector('#status');
 const form = document.querySelector('#answerForm');
 const entry = document.querySelector('#answer');
 const questionText = document.querySelector('#question');
-const introPlayedKey = 'qwebgpu.startupAviPlayed';
+const introPlayedKey = 'qwebgpu.startupAviPlayedWithSound';
 const manualVerifiedKey = 'qwebgpu.manualVerified';
 const uploadMode = new URLSearchParams(location.search).has('upload');
 const storyStills = ['DRAKESS4.IMG', 'DRAKESS2.IMG', 'DRAKESS3.IMG', 'DRAKESS6.IMG'];
@@ -49,11 +49,12 @@ function updateFolderStatus() {
     status.textContent = 'Loading configuration…';
     return;
   }
+  const choosingFolder = config.fileUpload && uploadMode;
   const names = config.copyProtection ? [...required, 'COPY.IMG', 'COPYFONT.SPR', 'PW.ENC'] : required;
   const missing = uploaded ? names.filter(name => !files.has(name)) : [];
-  start.disabled = !uploaded || missing.length > 0;
+  start.disabled = choosingFolder && (!uploaded || missing.length > 0);
   status.textContent = missing.length ? 'Missing from selected folder: ' + missing.join(', ') :
-    !uploaded && config.fileUpload && uploadMode ? 'Select a game folder.' : '';
+    choosingFolder && !uploaded ? 'Select a game folder.' : '';
   if (!start.disabled && !start.hidden) start.focus();
 }
 
@@ -144,7 +145,10 @@ function sound(buffer) {
   const source = audio.createBufferSource();
   source.buffer = buffer;
   source.connect(audio.destination);
-  const ended = new Promise(done => source.addEventListener('ended', done, {once: true}));
+  const ended = new Promise(done => source.addEventListener('ended', () => {
+    source.disconnect();
+    done();
+  }, {once: true}));
   source.start();
   return {source, ended};
 }
@@ -238,8 +242,7 @@ async function manualChallenge({lines, widths, glyphs, background, question, vga
 async function splash(vga, image, voice) {
   vga.setImage(image);
   await vga.fade(image.dac, true);
-  if (voice && audio.state === 'running') await sound(voice).ended;
-  else await retraces(180);
+  await sound(voice).ended;
   await vga.fade(image.dac, false);
 }
 
@@ -314,7 +317,7 @@ async function playAttract(movie, voice, vga, tables) {
   }
 }
 
-async function playWrapperMovie(name, onStart) {
+async function playWrapperMovie(name) {
   const file = await getFile(name, true);
   if (!file) return;
   let firstFrame = true;
@@ -326,9 +329,9 @@ async function playWrapperMovie(name, onStart) {
       screen.focus();
     }
     display.presentAvi(pixels);
-    if (firstFrame) onStart?.();
     firstFrame = false;
   });
+  return true;
 }
 
 async function startGame() {
@@ -340,16 +343,16 @@ async function startGame() {
     if (!window.AudioContext) throw new Error('Web Audio is unavailable.');
     if (!audio) audio = new AudioContext({latencyHint: 0.005});
     const unlockAudio = () => {
-      if (audio.state === 'suspended') {
+      if (audio.state !== 'running') {
         audio.resume().catch(error => console.error('Unable to enable game audio:', error));
       }
     };
     document.addEventListener('keydown', unlockAudio, {signal: audioEvents.signal});
-    document.addEventListener('pointerdown', unlockAudio, {signal: audioEvents.signal});
+    document.addEventListener('click', unlockAudio, {signal: audioEvents.signal});
     unlockAudio();
     display ??= await createDisplay(screen);
-    if (!sessionStorage.getItem(introPlayedKey)) {
-      await playWrapperMovie('BQUAR1DK.AVI', () => sessionStorage.setItem(introPlayedKey, '1'));
+    if (!sessionStorage.getItem(introPlayedKey) && await playWrapperMovie('BQUAR1DK.AVI')) {
+      sessionStorage.setItem(introPlayedKey, '1');
     }
     for (const name of ['GAMETEK.IMG', 'IEGLOW.IMG']) {
       images.push(await loadImage(name));

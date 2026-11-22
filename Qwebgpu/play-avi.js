@@ -24,19 +24,22 @@ export async function playAvi(file, audio, screen, presentFrame) {
 
     let pixels = movie.pixels;
     let current = 0;
-    presentFrame(pixels);
-    const wallStart = performance.now();
-    let startedAt;
     const duration = Math.max(frameCount * secondsPerFrame, audioBuffer.duration);
+    const startedAt = audio.currentTime;
+    source.start(startedAt);
+    started = true;
+    presentFrame(pixels);
 
     await new Promise((resolve, reject) => {
       const options = {signal: controls.signal};
+      // While autoplay is blocked, the first interaction unlocks playback at frame zero.
+      const skip = () => { if (audio.currentTime > startedAt) resolve(); };
       document.addEventListener('keydown', event => {
         if (event.key !== ' ' && event.key !== 'Escape') return;
         event.preventDefault();
-        if (!event.repeat) resolve();
+        if (!event.repeat) skip();
       }, options);
-      screen.addEventListener('click', () => resolve(), options);
+      screen.addEventListener('click', skip, options);
 
       worker.onerror = event => reject(new Error(event.message || 'AVI decoder stopped.'));
       worker.onmessage = ({data}) => {
@@ -54,13 +57,7 @@ export async function playAvi(file, audio, screen, presentFrame) {
       };
 
       function tick() {
-        let elapsed = started ? audio.currentTime - startedAt : (performance.now() - wallStart) / 1000;
-        if (!started && audio.state === 'running' && elapsed < audioBuffer.duration) {
-          startedAt = audio.currentTime - elapsed;
-          source.start(0, elapsed);
-          started = true;
-          elapsed = audio.currentTime - startedAt;
-        }
+        const elapsed = audio.currentTime - startedAt;
         if (elapsed >= duration && current === frameCount - 1) {
           resolve();
           return;

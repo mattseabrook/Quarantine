@@ -89,7 +89,7 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
 ```
 
 Open `http://127.0.0.1:8000/` in desktop Chrome or Brave with WebGPU
-available. Qwebgpu starts from the retail files served through
+available. Qwebgpu starts automatically and loads the retail files served through
 `Qwebgpu/MS-DOS`. Folder selection and copy protection default to off in
 `Qwebgpu/config.json`. Place matching HD PNGs in `Qwebgpu/HD`. On a separate computer, use HTTPS or the
 SSH tunnel in the [browser instructions](Qwebgpu/README.md).
@@ -491,8 +491,8 @@ messages and their cross-references.
 The DOS projection at `0x30DC8` computes screen X as
 `160 + 256 * side / max(depth, 12)`. The half-width is 160 pixels and the
 focal length is 256 pixels, giving a horizontal field of view of
-`2 * atan(160/256)`, approximately **64.0°**. Qwebgpu uses up to **90° horizontal** in the cockpit and **110°** in chase.
-The cockpit lens tightens on narrower windows so the panels fill the frame vertically. Its gameplay pass shades every output pixel.
+`2 * atan(160/256)`, approximately **64.0°**. Qwebgpu uses **110° horizontal** in chase.
+The cockpit framing depends on head direction and viewport aspect. Its gameplay pass shades every output pixel.
 [DOS projection routine](disassembly/SKIPIT/src/functions/graphics/project_view_points_at_height.asm).
 
 | Component | Recovered layout | Runtime evidence |
@@ -751,11 +751,11 @@ on the six-bit VGA DAC. Other indices supply the darker cloud and skyline tones.
 | `0x393CC` | A nonzero district flag selects the panorama copy loop at `0x394FD`. A zero flag selects a solid fill using the palette index stored at `DS:13953`. |
 | `0x10429–0x10435` | Fade in the gameplay DAC from `DS:12DC0`. This is the palette that gives the panorama indices their displayed colors. |
 
-Qwebgpu takes the hue of the most frequent visible nonblack sky color, or
-the fill color for a solid backdrop. Ambient lighting now uses 100% of this
-hue, up from a 50% mix with neutral light. Ambient intensity drops from
-0.48 to 0.28 in the shader’s approximate linear-light space. The panorama and
-dashboard still use the original display palette.
+Qwebgpu uses the fill color in the HD panorama as its transparency key and
+the tint for the night sky and street ambient light. Districts without a
+keyed panorama derive their hue from the indexed sky or flat backdrop.
+Ambient intensity is 0.28 in the shader’s approximate linear-light space.
+[Night sky and clouds](Qwebgpu/README.md#night-sky-and-clouds).
 
 | Core fixture | Source art | GPU lighting |
 | --- | --- | --- |
@@ -772,7 +772,7 @@ last. Point lights currently have no shadow maps.
 
 | Component | Geometry and behavior |
 | --- | --- |
-| Cockpit | The driver sits inside a six-face cabin. The windshield and dashboard share the front face with the steering wheel and welcome lettering. `LDOOR35.IMG` covers the left door and its mirror covers the right. Transparent window texels reveal the street. Horizontal head movement stops at 90° on either side. |
+| Cockpit | The driver sits inside a six-face cabin. The windshield and dashboard share the front face with the steering wheel and welcome lettering. `LDOOR35.IMG` covers the left door and its mirror covers the right. Transparent window texels reveal the street. Horizontal head movement stops at 100° on either side. |
 | Exterior model reference | The yellow box measures **220 long × 97 wide × 60 high** in world units. Its origin is the driver's XY position. Its base lies at driver Z + 20 and its roof at driver Z − 40. Positive Z points down. One MAP cell is 512 units wide. |
 | Sizing evidence | The retail cab artwork has a 136-pixel side silhouette, a 60-pixel end silhouette and a height of about 37 pixels. Scaling those proportions to put the horizontal corners at the DOS probe radius gives the dimensions above. The radius is measured in code. Treat the resulting box dimensions as a modeling estimate. |
 | Chase camera | F toggles between cockpit and chase. Chase has continuous horizontal orbit and retains its wheel zoom. The boom spans 108–350 world units, starting at 210, and shortens against walls. The height above the aim point passes through 40, 70 and 110 units at the former distance presets. |
@@ -808,7 +808,7 @@ walls have records on disk. No such record seals the street under block
 | Window panel orientation | Variant 2 uses bank 11, image 4 on all four walls. `0x3305C` changes SPR rows to columns, then `0x3C0BC` advances through whole columns as screen X increases. | The GPU samples the disk rows directly. Uploading transposed rows rotated the panels and also rotated holes in masked textures. |
 | Which wall spans can show through | `0x41FA5` and `0x4247C` consult flag bit 1 for the reverse side. The uniform path tests bit 0 for masking. The high-detail sectioned loop at `0x3C7EF` tests the whole flag byte. Both read materials from screen left to right. | Sectioned walls select the material for the viewed side before testing its transparency. An opaque column writes index zero as a color. A masked column skips a zero source texel before shading. |
 | Road surface | `0x44184` receives floor scale and orientation. The four jump-table entries at `0x44174` select quarter-turns. A scale of 1 doubles the repeat period to 128 world units. | The mesh uses the BLK rotation and scale for each polygon. |
-| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40EEE` skips block zero. | A render bundle follows that neighborhood as the camera crosses cell boundaries. Geometry beyond it no longer appears behind the entrance. |
+| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40EEE` skips block zero. | Chunked render bundles cover the full district. Distant geometry fades through district-colored fog to black. |
 | Distance shading | The first RGB triple in `DATA1.DAT` specifies black. `0x34094` builds sixteen palette remaps. The 64 bytes at `DS:0x8C7A` select a remap by depth. | The shader looks up the street color after the mask test. The cab overlay keeps its display palette. |
 
 The port uses a GPU depth buffer. DOS interpolates shade values along projected spans and visits

@@ -177,7 +177,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
   }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. Click to capture the mouse and look left or right. M opens the map. F switches between cockpit and chase. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens the debugging console. Minus and plus change resolution. Escape opens the menu.');
+      'W and S drive, A and D steer. Click to capture the mouse. Look left and right in the cockpit or in any direction in chase. M opens the map. F switches views. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens the debugging console. Minus and plus change resolution. Escape opens the menu.');
   }
   function dismiss() { session.welcome = false; describe(); }
   async function openMap() {
@@ -298,7 +298,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
     }, {...options,passive:false});
     document.addEventListener('mousemove', e => {
       if (!session.welcome && drivingInput() && (document.pointerLockElement === screen || e.target === screen)) {
-        turnView(car,e.movementX);
+        turnView(car,e.movementX,e.movementY);
         if (car.camera && !document.pointerLockElement) {
           const bounds = screen.getBoundingClientRect();
           edgeTurn = e.clientX <= bounds.left+3 ? -1 : e.clientX >= bounds.right-3 ? 1 : 0;
@@ -344,6 +344,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
           visibleCar.camera = car.camera;
           visibleCar.lookYaw = car.lookYaw;
           visibleCar.orbitYaw = car.orbitYaw;
+          visibleCar.chasePitch = car.chasePitch;
           visibleCar.chaseDistance = car.chaseDistance;
           if (mapView) mapView.draw();
           else view.draw(visibleCar,session.welcome,fade);

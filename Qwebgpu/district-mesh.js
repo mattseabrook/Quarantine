@@ -56,6 +56,70 @@ export function wallFlags(block, variant, material, flags) {
   return flags[index];
 }
 
+// Build per-cell depth layers for overlapping, coplanar wall sections.
+// The smaller panel takes precedence over its backing wall.
+export function wallDepthLayers(blocks, {tiles,width}, flags) {
+  const planes = new Map();
+  tiles.forEach((tile, cell) => {
+    const block = blocks[tile&127];
+    if (!(tile&127) || !block) return;
+    const variant = (tile>>>8)&3;
+    const x = (cell%width)*512, y = Math.floor(cell/width)*512;
+    block.faces.forEach((face, index) => {
+      if (face.floor || face.material >= block.variantStride) return;
+      const [a,b,c] = face.vertices;
+      const dx = b[0]-a[0], dy = b[1]-a[1];
+      const direction = dx < 0 || (dx === 0 && dy < 0) ? -1 : 1;
+      let divisor = Math.abs(dx), remainder = Math.abs(dy);
+      while (remainder) [divisor,remainder] = [remainder,divisor%remainder];
+      const ux = direction*dx/divisor, uy = direction*dy/divisor;
+      const ax = x+a[0], ay = y+a[1];
+      const key = `${ux},${uy},${ux*ay-uy*ax}`;
+      const first = ux*ax+uy*ay, last = first+ux*dx+uy*dy;
+      const start = Math.min(first,last), end = Math.max(first,last);
+      const top = Math.min(a[2],c[2]), bottom = Math.max(a[2],c[2]);
+      const area = (end-start)*(bottom-top);
+      const twoSided = Boolean(wallFlags(block,variant,face.sideMaterial,flags)&2);
+      if (!planes.has(key)) planes.set(key,[]);
+      planes.get(key).push({cell,index,start,end,top,bottom,area,direction,twoSided,behind:[],layer:0});
+    });
+  });
+
+  const order = (a,b) => b.area-a.area || a.cell-b.cell || a.index-b.index;
+  const byCell = new Map();
+  for (const walls of planes.values()) {
+    if (walls.length < 2) continue;
+    walls.sort((a,b) => a.start-b.start);
+    walls.forEach((a,i) => {
+      for (let j = i+1; j < walls.length && walls[j].start < a.end; j++) {
+        const b = walls[j];
+        if (a.top >= b.bottom || b.top >= a.bottom) continue;
+        if (a.direction !== b.direction && !a.twoSided && !b.twoSided) continue;
+        if (order(a,b) < 0) b.behind.push(a);
+        else a.behind.push(b);
+      }
+    });
+    for (const wall of walls.sort(order)) {
+      if (!wall.behind.length) continue;
+      wall.layer = 1+Math.max(...wall.behind.map(other => other.layer));
+      if (!byCell.has(wall.cell)) byCell.set(wall.cell,new Uint32Array(blocks[tiles[wall.cell]&127].faces.length));
+      byCell.get(wall.cell)[wall.index] = wall.layer;
+    }
+  }
+
+  // The first entry for each MAP cell points to its block's face layers.
+  let size = tiles.length;
+  for (const layers of byCell.values()) size += layers.length;
+  const result = new Uint32Array(size);
+  let offset = tiles.length;
+  for (const [cell,layers] of byCell) {
+    result[cell] = offset;
+    result.set(layers,offset);
+    offset += layers.length;
+  }
+  return result;
+}
+
 function welcomeOverlay(planes, {start, font}) {
   start.welcome.forEach((line,i) => {
     let x = 96;
@@ -105,7 +169,7 @@ export function districtMesh(district) {
       const lights = [];
       blockLights.push(lights);
       const first = vertices.length/12;
-      for (const face of block.faces) {
+      for (const [faceIndex,face] of block.faces.entries()) {
         if (face.vertices.length < 3 || face.material >= block.variantStride) continue;
         const [a,b,c] = face.vertices;
         if (face.floor) {
@@ -153,11 +217,12 @@ export function districtMesh(district) {
               }
             }
           }
+          const flagsAndFace = masked|both|(side*4)|(bulbs.length ? 16 : 0)|(faceIndex<<5);
           for (const j of [0,1,2,0,2,3]) {
             const end = j === 1 || j === 2;
             const u = (reverseUV ? end : !end) ? face.repeats : 0;
             vertices.push(...face.vertices[j],u,Number(j>=2),...rect,
-              sign*(b[0]-a[0]),sign*(b[1]-a[1]),masked|both|(side*4)|(bulbs.length ? 16 : 0));
+              sign*(b[0]-a[0]),sign*(b[1]-a[1]),flagsAndFace);
           }
         }
       }

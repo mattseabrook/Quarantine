@@ -1,4 +1,5 @@
 import {loadHDImage} from './hd-images.js';
+import {loadStarCubemap} from './skybox.js';
 
 // Bin each lamp into the MAP cells touched by its light. A fragment only
 // visits the local list, including lamps planted across a block boundary.
@@ -33,7 +34,7 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
 // their typed arrays avoids copying the geometry and indexed texture atlas.
 export async function readDistrict(getFile, start) {
   const jobs = [
-    ['geometry',[start.blocks,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
+    ['geometry',[start.map,start.blocks,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
       'DATA'+start.district+'.DAT',...start.wallBanks]],
     ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT']],
     ['cockpit',['CAB.IMG','LDOOR35.IMG','WHEELSPR.SPR','FONT.SPR']],
@@ -41,9 +42,10 @@ export async function readDistrict(getFile, start) {
   const workers = [];
   try {
     const names = [...new Set(jobs.flatMap(([,names]) => names))];
-    const [entries, hdSky, hdCab, hdDoor] = await Promise.all([
+    const [entries, hdSky, hdCab, hdDoor, starCubemap] = await Promise.all([
       Promise.all(names.map(async name => [name,await getFile(name)])),
       loadHDImage(start.sky), loadHDImage('CAB.IMG'), loadHDImage('LDOOR35.IMG'),
+      loadStarCubemap(),
     ]);
     const files = new Map(entries);
     const parts = await Promise.all(jobs.map(([part,names]) => new Promise((resolve,reject) => {
@@ -54,7 +56,7 @@ export async function readDistrict(getFile, start) {
       worker.onmessage = ({data}) => data.error ? reject(new Error(data.error)) : resolve(data.value);
       worker.postMessage({part,start,files:new Map(names.map(name => [name,files.get(name)]))});
     })));
-    const district = Object.assign({start,hdSky,hdCab,hdDoor},...parts);
+    const district = Object.assign({start,hdSky,hdCab,hdDoor,starCubemap},...parts);
     district.streetLights = streetLightGrid(district);
     return district;
   } finally {

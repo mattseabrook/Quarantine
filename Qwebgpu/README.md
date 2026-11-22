@@ -6,8 +6,10 @@ Serve this directory from the repository root.
 python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
 ```
 
-Open `http://127.0.0.1:8000/`. By default, the game starts automatically and the server
-reads the September 1994 retail files from `Qwebgpu/MS-DOS`, a symlink to the
+Open `http://127.0.0.1:8000/` to start Qwebgpu. If the browser blocks autoplay
+with sound, a click or key press on the game lets the intro play from its
+first frame with audio. The server reads the
+September 1994 retail files from `Qwebgpu/MS-DOS`, a symlink to the
 repository's `MS-DOS` directory. On a fresh tab, `BQUAR1DK.AVI` plays
 before the startup screens. Use the manual to enter the three-digit
 response if copy protection is enabled. Press a key or tap the animated title to reach the main menu. Use Up/Down
@@ -31,11 +33,9 @@ and `PW.ENC` are required in the selected game folder. This setting does not
 modify the DOS executable or its disassembly.
 
 Set `"fileUpload": true` and reload to show a **Select game folder** link.
-The served game still starts automatically; the link opens the optional
-folder picker and Start button. A selected folder replaces the served files
-for that session; choose **Use served files** to return. The upload option
-is disabled by default. Browsers may mute audio until the first
-key press or click; the opening video continues while audio is locked.
+The link opens the optional folder picker. A selected folder replaces the
+served files for that session. Choose **Use served files** to return. The
+upload option is disabled by default.
 
 The web server must follow the symlink and serve files from `MS-DOS`. Anyone
 who can reach the server can request files from that directory, including
@@ -51,10 +51,28 @@ For example, `HD/KSKY.png` replaces `KSKY.IMG` in the Core when you start
 a New Game. Both `.png` and `.PNG` work. Reload the page after adding an
 image. The renderer uses the original IMG when a replacement is unavailable.
 
-Match the original framing. The sky uses the top half of its image, and
+Match the original framing. The skyline uses the top half of its image, and
 cockpit and door PNGs use alpha for their windows. Screen overlays keep
 their original positions. Sprite banks and the floor texture atlas continue
 to use their retail assets.
+
+### Night sky and clouds
+
+The renderer recognizes a nearly uniform color across the top of an HD sky
+PNG. It keys out pixels of that color, including small variations in the Core's
+purple fill, to reveal a star cubemap and moving volumetric clouds. The
+black buildings retain the panorama's original projection and parallax. The
+key color tints the stars, atmosphere, clouds, and ambient lighting on city
+surfaces. Districts without a keyed PNG take their tint from the retail palette.
+
+The same six 2048 × 2048 cubemap faces are shared by all districts. The local
+WebP stores a grayscale reprojection of Greg Zaal and Jarod Guest's 8K
+night panorama so the renderer can apply each district's tint. [Qwantani Night (Pure Sky)](https://polyhaven.com/a/qwantani_night_puresky), [CC0 license](https://polyhaven.com/license).
+
+The cloud pass ray-marches a 3D density texture through a layer above the
+city. A world-space wind moves the density, and clouds obscure the stars as
+they pass in front of them. Shallow views use less cloud opacity, and the
+cloud highlights remain visible overhead as the sky darkens.
 
 ### Driving and display controls
 
@@ -62,7 +80,7 @@ to use their retail assets.
 | --- | --- |
 | W, S | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
 | A, D | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
-| Mouse | Click the driving view to capture the pointer. Move horizontally to look up to 90° left or right in the cockpit, or orbit continuously in chase view. |
+| Mouse | Click the driving view to capture the pointer. In the cockpit, look up to 100° left or right. In chase view, move horizontally to orbit and vertically to look up or down. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
 | Mouse wheel | Zoom continuously in chase view. Roll forward to move closer. The distance is remembered when switching views. |
 | M | Open the city map. Arrow keys move the map cursor; M or Escape returns to driving. |
@@ -77,8 +95,9 @@ The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 1920×1080 and 2560×1440 when they fit the display. Gameplay defaults to the
 display's native pixel dimensions, subject to the device's texture limit.
 On a 16:9 window the camera fills a 16:9 frame. Chase uses 110° horizontal FOV.
-The cockpit uses up to 90° and zooms uniformly as needed to keep the dashboard and doors filling the viewport vertically. The
-front artwork and mirrored door artwork meet at right angles inside the 3D cabin.
+The cockpit pulls back more when facing the windshield and slightly when facing
+either door. The front artwork and mirrored door artwork meet at right angles
+inside the 3D cabin.
 
 Driving sound uses the installed `ENG7.VOC` loop and `IMPACT.VOC` sample.
 Engine pitch follows the SKIPIT playback step in both directions. The
@@ -93,7 +112,9 @@ Three workers prepare the map and lookup tables, world geometry and materials,
 and cockpit art concurrently. The GPU clips, projects, textures and
 depth-tests the world, draws repeated blocks as instances, applies the district
 wall material's backface, transparency and collision flags, and draws the
-textured cabin or the yellow 220 × 97 × 60 world-unit exterior box. A render bundle retains the street geometry in the 49-cell neighborhood read from SKIPIT. Crossing a cell boundary refreshes the bundle. A separate 35 Hz fixed step runs
+textured cabin or the yellow 220 × 97 × 60 world-unit exterior box. Render
+bundles cover the full district and skip chunks outside the camera's view.
+Distance fog uses the district hue and fades to black at long range. A separate 35 Hz fixed step runs
 the keyboard driving equations. DOS used a measured frame-rate divisor there.
 The intro and wrapper videos retain their own media clocks.
 
@@ -164,7 +185,8 @@ The street renderer uses row-major retail wall art, per-face floor scale and
 rotation, and the placed sprites in the fourth BLK group. The eighteen
 placements on block 0x6E include the supports beneath the windows east of
 the spawn. GPU distance shading uses the district RGB target and the
-executable's 64 depth bands. DOS BSP draw ordering, animated materials and
+executable's 64 depth bands. For wall sections that overlap on the same plane,
+a small depth adjustment gives the smaller panel priority. DOS BSP draw ordering, animated materials and
 pixel-level parity remain open. [Spawn geometry trace](../README.md#the-structure-east-of-the-new-game-spawn).
 
 The darker street uses the full district sky tint. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The GPU draws world-space halos over both types of fixture. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
