@@ -31,8 +31,8 @@ Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
 byte. The 1,018 documented entries comprise 1,014 analyzer-seeded functions in
 object 1, two gameport routines in object 2, and two recovered VGA routines
-in object 3. Currently 130 entries have descriptive roles (12.77%), including
-probable identifications. The other 888 retain provisional address-based names.
+in object 3. Currently 156 entries have descriptive roles (15.32%), including
+probable identifications. The other 862 retain provisional address-based names.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
 format, toolchain, and recovered game behavior.
@@ -71,6 +71,8 @@ game process.
 | `0x44A30`, `0x44A90` | Load a ZZZ palette and map overlay, and expand packed data using the decoder shared with KPG |
 | `0x2B530`, `0x2C5F8` | Load New Game district assets, including collision and trigger tables |
 | `0x2B704`, `0x45340` | Set up the district for play and initialize its indexed state table |
+| `0x56FB8`, `0x575D1` | Start a mixer voice from a sample descriptor and stop the voice by its slot index |
+| `0x57E7D` | Replace the 16.16 playback step at offset `+0x44` of an active mixer voice and return its previous value |
 
 ## Manual challenge and VGA output
 

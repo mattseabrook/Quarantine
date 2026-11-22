@@ -25,9 +25,8 @@ export async function playAvi(file, audio, screen, presentFrame) {
     let pixels = movie.pixels;
     let current = 0;
     presentFrame(pixels);
-    const startedAt = audio.currentTime;
-    source.start(startedAt);
-    started = true;
+    const wallStart = performance.now();
+    let startedAt;
     const duration = Math.max(frameCount * secondsPerFrame, audioBuffer.duration);
 
     await new Promise((resolve, reject) => {
@@ -55,7 +54,13 @@ export async function playAvi(file, audio, screen, presentFrame) {
       };
 
       function tick() {
-        const elapsed = audio.currentTime - startedAt;
+        let elapsed = started ? audio.currentTime - startedAt : (performance.now() - wallStart) / 1000;
+        if (!started && audio.state === 'running' && elapsed < audioBuffer.duration) {
+          startedAt = audio.currentTime - elapsed;
+          source.start(0, elapsed);
+          started = true;
+          elapsed = audio.currentTime - startedAt;
+        }
         if (elapsed >= duration && current === frameCount - 1) {
           resolve();
           return;

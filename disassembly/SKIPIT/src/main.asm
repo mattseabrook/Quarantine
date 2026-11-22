@@ -246,7 +246,7 @@ bits 32
 %include "src/functions/unresolved/00025d10_fun_00025d10.asm"
 %include "src/functions/unresolved/00025d7c_fun_00025d7c.asm"
 %include "src/functions/unresolved/00025e30_fun_00025e30.asm"
-%include "src/functions/unresolved/000260c8_fun_000260c8.asm"
+%include "src/functions/runtime/resolve_player_wall_contact.asm"
 %include "src/functions/unresolved/00026514_fun_00026514.asm"
 %include "src/functions/unresolved/000266e0_fun_000266e0.asm"
 %include "src/functions/unresolved/00026744_fun_00026744.asm"
@@ -294,7 +294,7 @@ bits 32
 %include "src/functions/unresolved/0002b69c_fun_0002b69c.asm"
 %include "src/functions/runtime/initialize_district_for_play.asm"
 %include "src/functions/unresolved/0002b81c_fun_0002b81c.asm"
-%include "src/functions/unresolved/0002b854_fun_0002b854.asm"
+%include "src/functions/graphics/build_district_palette_tables.asm"
 %include "src/functions/unresolved/0002b9a4_fun_0002b9a4.asm"
 %include "src/functions/unresolved/0002ba88_fun_0002ba88.asm"
 %include "src/functions/unresolved/0002bae4_fun_0002bae4.asm"
@@ -387,10 +387,10 @@ bits 32
 %include "src/functions/unresolved/00030ae4_fun_00030ae4.asm"
 %include "src/functions/unresolved/00030bd8_fun_00030bd8.asm"
 %include "src/functions/unresolved/00030cc8_fun_00030cc8.asm"
-%include "src/functions/unresolved/00030dc8_fun_00030dc8.asm"
+%include "src/functions/graphics/project_view_points_at_height.asm"
 %include "src/functions/unresolved/00030e3c_fun_00030e3c.asm"
 %include "src/functions/unresolved/00030e90_fun_00030e90.asm"
-%include "src/functions/unresolved/00030f38_fun_00030f38.asm"
+%include "src/functions/graphics/transform_local_points_to_view.asm"
 %include "src/functions/unresolved/00030fb0_fun_00030fb0.asm"
 %include "src/functions/runtime/initialize_district_spawn.asm"
 %include "src/functions/unresolved/00031174_fun_00031174.asm"
@@ -420,7 +420,7 @@ bits 32
 %include "src/functions/unresolved/00032c10_fun_00032c10.asm"
 %include "src/functions/graphics/load_planar_sprite_bank.asm"
 %include "src/functions/unresolved/00032e38_fun_00032e38.asm"
-%include "src/functions/unresolved/0003305c_fun_0003305c.asm"
+%include "src/functions/resource_io/load_column_major_sprite_bank.asm"
 %include "src/functions/graphics/read_gif_byte_or_abort.asm"
 %include "src/functions/unresolved/000332b0_fun_000332b0.asm"
 %include "src/functions/graphics/reset_gif_lzw_dictionary.asm"
@@ -432,9 +432,9 @@ bits 32
 %include "src/functions/graphics/decode_gif_image_rows.asm"
 %include "src/functions/graphics/load_indexed_img.asm"
 %include "src/functions/unresolved/00033cd4_fun_00033cd4.asm"
-%include "src/functions/unresolved/00033ce0_fun_00033ce0.asm"
+%include "src/functions/graphics/extract_floor_texture_tiles.asm"
 %include "src/functions/unresolved/00033ee0_fun_00033ee0.asm"
-%include "src/functions/unresolved/00034094_fun_00034094.asm"
+%include "src/functions/graphics/build_depth_shade_tables.asm"
 %include "src/functions/unresolved/000344c4_fun_000344c4.asm"
 %include "src/functions/unresolved/000344f0_fun_000344f0.asm"
 %include "src/functions/unresolved/0003451c_fun_0003451c.asm"
@@ -454,11 +454,11 @@ bits 32
 %include "src/functions/unresolved/00034c03_fun_00034c03.asm"
 %include "src/functions/unresolved/00034c8c_fun_00034c8c.asm"
 %include "src/functions/unresolved/00034d15_fun_00034d15.asm"
-%include "src/functions/unresolved/00034da8_fun_00034da8.asm"
-%include "src/functions/unresolved/00034db0_fun_00034db0.asm"
-%include "src/functions/unresolved/00034db8_fun_00034db8.asm"
-%include "src/functions/unresolved/00034dc0_fun_00034dc0.asm"
-%include "src/functions/unresolved/00034dc8_fun_00034dc8.asm"
+%include "src/functions/graphics/blit_map_top_left.asm"
+%include "src/functions/graphics/blit_map_top_right.asm"
+%include "src/functions/graphics/blit_map_bottom_left.asm"
+%include "src/functions/graphics/blit_map_bottom_right.asm"
+%include "src/functions/graphics/blit_map_quadrant_planes.asm"
 %include "src/functions/unresolved/00034e94_fun_00034e94.asm"
 %include "src/functions/unresolved/00034f44_fun_00034f44.asm"
 %include "src/functions/unresolved/00034f74_fun_00034f74.asm"
@@ -482,10 +482,10 @@ bits 32
 %include "src/functions/unresolved/00036060_fun_00036060.asm"
 %include "src/functions/graphics/compile_vga_overlay_mask_runs.asm"
 %include "src/functions/unresolved/00038f80_fun_00038f80.asm"
-%include "src/functions/unresolved/0003932c_fun_0003932c.asm"
+%include "src/functions/graphics/draw_district_sky.asm"
 %include "src/functions/unresolved/00039843_fun_00039843.asm"
 %include "src/functions/unresolved/0003b970_fun_0003b970.asm"
-%include "src/functions/unresolved/0003c0bc_fun_0003c0bc.asm"
+%include "src/functions/graphics/rasterize_uniform_wall_columns.asm"
 %include "src/functions/unresolved/0003cf54_fun_0003cf54.asm"
 %include "src/functions/unresolved/0003cfdc_fun_0003cfdc.asm"
 %include "src/functions/unresolved/0003d0a0_fun_0003d0a0.asm"
@@ -529,19 +529,19 @@ bits 32
 %include "src/functions/unresolved/0003fdb4_fun_0003fdb4.asm"
 %include "src/functions/unresolved/0003ff28_fun_0003ff28.asm"
 %include "src/functions/unresolved/0003ff70_fun_0003ff70.asm"
-%include "src/functions/unresolved/0004012c_fun_0004012c.asm"
+%include "src/functions/graphics/queue_block_bsp_surfaces.asm"
 %include "src/functions/unresolved/0004043c_fun_0004043c.asm"
-%include "src/functions/unresolved/00040964_fun_00040964.asm"
+%include "src/functions/graphics/draw_district_render_queue.asm"
 %include "src/functions/unresolved/000412e0_fun_000412e0.asm"
 %include "src/functions/unresolved/0004138c_fun_0004138c.asm"
 %include "src/functions/unresolved/00041460_fun_00041460.asm"
 %include "src/functions/unresolved/00041484_fun_00041484.asm"
 %include "src/functions/unresolved/00041594_fun_00041594.asm"
 %include "src/functions/unresolved/0004168c_fun_0004168c.asm"
-%include "src/functions/unresolved/000417b0_fun_000417b0.asm"
-%include "src/functions/unresolved/00041d9c_fun_00041d9c.asm"
-%include "src/functions/unresolved/00042258_fun_00042258.asm"
-%include "src/functions/unresolved/00042730_fun_00042730.asm"
+%include "src/functions/graphics/draw_floor_polygon.asm"
+%include "src/functions/graphics/draw_uniform_material_wall.asm"
+%include "src/functions/graphics/draw_sectioned_material_wall.asm"
+%include "src/functions/graphics/draw_placed_district_sprite.asm"
 %include "src/functions/unresolved/00042860_fun_00042860.asm"
 %include "src/functions/resource_io/load_city_blocks_and_build_bsp.asm"
 %include "src/functions/unresolved/000435c4_fun_000435c4.asm"
@@ -659,9 +659,9 @@ bits 32
 %include "src/functions/unresolved/0004bc50_fun_0004bc50.asm"
 %include "src/functions/unresolved/0004bd7c_fun_0004bd7c.asm"
 %include "src/functions/unresolved/0004bfc4_fun_0004bfc4.asm"
-%include "src/functions/unresolved/0004c02c_fun_0004c02c.asm"
+%include "src/functions/audio/advance_cd_track.asm"
 %include "src/functions/audio/start_intro_cd_audio.asm"
-%include "src/functions/unresolved/0004c128_fun_0004c128.asm"
+%include "src/functions/audio/read_cd_disc_info.asm"
 %include "src/functions/audio/play_cd_from_track_to_leadout.asm"
 %include "src/functions/unresolved/0004c2f4_fun_0004c2f4.asm"
 %include "src/functions/audio/stop_cd_audio.asm"
@@ -706,7 +706,7 @@ bits 32
 %include "src/functions/unresolved/0004ff10_fun_0004ff10.asm"
 %include "src/functions/unresolved/00050040_fun_00050040.asm"
 %include "src/functions/unresolved/00050150_fun_00050150.asm"
-%include "src/functions/unresolved/00050260_fun_00050260.asm"
+%include "src/functions/graphics/show_city_map.asm"
 %include "src/functions/unresolved/00051538_fun_00051538.asm"
 %include "src/functions/unresolved/00051710_fun_00051710.asm"
 %include "src/functions/unresolved/000517d4_fun_000517d4.asm"
@@ -791,10 +791,10 @@ bits 32
 %include "src/functions/unresolved/00056edc_fun_00056edc.asm"
 %include "src/functions/unresolved/00056f6d_fun_00056f6d.asm"
 %include "src/functions/unresolved/00056f8a_fun_00056f8a.asm"
-%include "src/functions/unresolved/00056fb8_fun_00056fb8.asm"
-%include "src/functions/unresolved/000575d1_fun_000575d1.asm"
+%include "src/functions/audio/start_mixer_voice.asm"
+%include "src/functions/audio/stop_mixer_voice.asm"
 %include "src/functions/unresolved/00057637_fun_00057637.asm"
-%include "src/functions/unresolved/00057e7d_fun_00057e7d.asm"
+%include "src/functions/audio/set_mixer_voice_step.asm"
 %include "src/functions/unresolved/00058047_fun_00058047.asm"
 %include "src/functions/unresolved/0005815a_fun_0005815a.asm"
 %include "src/functions/unresolved/0005817e_fun_0005817e.asm"
@@ -4539,7 +4539,7 @@ emit_data_0229_000406c7
 %if ($ - $$) != 0x160C8
     %error "layout drift at raw 000406C8"
 %endif
-emit_function_000260c8_part_00
+emit_resolve_player_wall_contact_part_00
 
 ; raw 00040B14..00040C94 (analyzer-owned function)
 %if ($ - $$) != 0x16514
@@ -5073,7 +5073,7 @@ emit_function_0002b81c_part_00
 %if ($ - $$) != 0x1B854
     %error "layout drift at raw 00045E54"
 %endif
-emit_function_0002b854_part_00
+emit_build_district_palette_tables_part_00
 
 ; raw 00045F5C..00045FA4 (explicit data)
 %if ($ - $$) != 0x1B95C
@@ -6081,7 +6081,7 @@ emit_data_0345_0004b353
 %if ($ - $$) != 0x20DC8
     %error "layout drift at raw 0004B3C8"
 %endif
-emit_function_00030dc8_part_00
+emit_project_view_points_at_height_part_00
 
 ; raw 0004B43C..0004B490 (analyzer-owned function)
 %if ($ - $$) != 0x20E3C
@@ -6099,7 +6099,7 @@ emit_function_00030e90_part_00
 %if ($ - $$) != 0x20F38
     %error "layout drift at raw 0004B538"
 %endif
-emit_function_00030f38_part_00
+emit_transform_local_points_to_view_part_00
 
 ; raw 0004B5AF..0004B5B0 (explicit data)
 %if ($ - $$) != 0x20FAF
@@ -6435,7 +6435,7 @@ emit_data_0371_0004d65a
 %if ($ - $$) != 0x2305C
     %error "layout drift at raw 0004D65C"
 %endif
-emit_function_0003305c_part_00
+emit_load_column_major_sprite_bank_part_00
 
 ; raw 0004D874..0004D880 (explicit data)
 %if ($ - $$) != 0x23274
@@ -6567,7 +6567,7 @@ emit_data_0381_0004e2d9
 %if ($ - $$) != 0x23CE0
     %error "layout drift at raw 0004E2E0"
 %endif
-emit_function_00033ce0_part_00
+emit_extract_floor_texture_tiles_part_00
 
 ; raw 0004E4D4..0004E4E0 (explicit data)
 %if ($ - $$) != 0x23ED4
@@ -6585,7 +6585,7 @@ emit_function_00033ee0_part_00
 %if ($ - $$) != 0x24094
     %error "layout drift at raw 0004E694"
 %endif
-emit_function_00034094_part_00
+emit_build_depth_shade_tables_part_00
 
 ; raw 0004E807..0004EAC4 (explicit data)
 %if ($ - $$) != 0x24207
@@ -6771,31 +6771,31 @@ emit_function_00034d15_part_00
 %if ($ - $$) != 0x24DA8
     %error "layout drift at raw 0004F3A8"
 %endif
-emit_function_00034da8_part_00
+emit_blit_map_top_left_part_00
 
 ; raw 0004F3B0..0004F3B8 (analyzer-owned function)
 %if ($ - $$) != 0x24DB0
     %error "layout drift at raw 0004F3B0"
 %endif
-emit_function_00034db0_part_00
+emit_blit_map_top_right_part_00
 
 ; raw 0004F3B8..0004F3C0 (analyzer-owned function)
 %if ($ - $$) != 0x24DB8
     %error "layout drift at raw 0004F3B8"
 %endif
-emit_function_00034db8_part_00
+emit_blit_map_bottom_left_part_00
 
 ; raw 0004F3C0..0004F3C8 (analyzer-owned function)
 %if ($ - $$) != 0x24DC0
     %error "layout drift at raw 0004F3C0"
 %endif
-emit_function_00034dc0_part_00
+emit_blit_map_bottom_right_part_00
 
 ; raw 0004F3C8..0004F480 (analyzer-owned function)
 %if ($ - $$) != 0x24DC8
     %error "layout drift at raw 0004F3C8"
 %endif
-emit_function_00034dc8_part_00
+emit_blit_map_quadrant_planes_part_00
 
 ; raw 0004F480..0004F494 (explicit data)
 %if ($ - $$) != 0x24E80
@@ -7071,7 +7071,7 @@ emit_data_0415_000535e7
 %if ($ - $$) != 0x2932C
     %error "layout drift at raw 0005392C"
 %endif
-emit_function_0003932c_part_00
+emit_draw_district_sky_part_00
 
 ; raw 00053DDD..00053E43 (explicit data)
 %if ($ - $$) != 0x297DD
@@ -7119,7 +7119,7 @@ emit_data_0420_00055fc0
 %if ($ - $$) != 0x2C0BC
     %error "layout drift at raw 000566BC"
 %endif
-emit_function_0003c0bc_part_00
+emit_rasterize_uniform_wall_columns_part_00
 
 ; raw 00056B11..00057554 (explicit data)
 %if ($ - $$) != 0x2C511
@@ -7605,7 +7605,7 @@ emit_data_0457_0005a72b
 %if ($ - $$) != 0x3012C
     %error "layout drift at raw 0005A72C"
 %endif
-emit_function_0004012c_part_00
+emit_queue_block_bsp_surfaces_part_00
 
 ; raw 0005AA39..0005AA3C (explicit data)
 %if ($ - $$) != 0x30439
@@ -7629,7 +7629,7 @@ emit_data_0459_0005ab85
 %if ($ - $$) != 0x30964
     %error "layout drift at raw 0005AF64"
 %endif
-emit_function_00040964_part_00
+emit_draw_district_render_queue_part_00
 
 ; raw 0005B40A..0005B8E0 (explicit data)
 %if ($ - $$) != 0x30E0A
@@ -7707,7 +7707,7 @@ emit_data_0465_0005bdab
 %if ($ - $$) != 0x317B0
     %error "layout drift at raw 0005BDB0"
 %endif
-emit_function_000417b0_part_00
+emit_draw_floor_polygon_part_00
 
 ; raw 0005C1AC..0005C39C (explicit data)
 %if ($ - $$) != 0x31BAC
@@ -7719,13 +7719,13 @@ emit_data_0466_0005c1ac
 %if ($ - $$) != 0x31D9C
     %error "layout drift at raw 0005C39C"
 %endif
-emit_function_00041d9c_part_00
+emit_draw_uniform_material_wall_part_00
 
 ; raw 0005C858..0005CD2E (analyzer-owned function)
 %if ($ - $$) != 0x32258
     %error "layout drift at raw 0005C858"
 %endif
-emit_function_00042258_part_00
+emit_draw_sectioned_material_wall_part_00
 
 ; raw 0005CD2E..0005CD30 (explicit data)
 %if ($ - $$) != 0x3272E
@@ -7737,7 +7737,7 @@ emit_data_0467_0005cd2e
 %if ($ - $$) != 0x32730
     %error "layout drift at raw 0005CD30"
 %endif
-emit_function_00042730_part_00
+emit_draw_placed_district_sprite_part_00
 
 ; raw 0005CE5A..0005CE60 (explicit data)
 %if ($ - $$) != 0x3285A
@@ -8871,7 +8871,7 @@ emit_data_0538_0006662a
 %if ($ - $$) != 0x3C02C
     %error "layout drift at raw 0006662C"
 %endif
-emit_function_0004c02c_part_00
+emit_advance_cd_track_part_00
 
 ; raw 000666D3..000666D4 (explicit data)
 %if ($ - $$) != 0x3C0D3
@@ -8895,7 +8895,7 @@ emit_data_0540_00066726
 %if ($ - $$) != 0x3C128
     %error "layout drift at raw 00066728"
 %endif
-emit_function_0004c128_part_00
+emit_read_cd_disc_info_part_00
 
 ; raw 000667E2..000667E4 (explicit data)
 %if ($ - $$) != 0x3C1E2
@@ -9429,7 +9429,7 @@ emit_data_0584_0006a7ac
 %if ($ - $$) != 0x40260
     %error "layout drift at raw 0006A860"
 %endif
-emit_function_00050260_part_00
+emit_show_city_map_part_00
 
 ; raw 0006BB36..0006BB38 (explicit data)
 %if ($ - $$) != 0x41536
@@ -10089,13 +10089,13 @@ emit_data_0609_000715a3
 %if ($ - $$) != 0x46FB8
     %error "layout drift at raw 000715B8"
 %endif
-emit_function_00056fb8_part_00
+emit_start_mixer_voice_part_00
 
 ; raw 00071BD1..00071C37 (analyzer-owned function)
 %if ($ - $$) != 0x475D1
     %error "layout drift at raw 00071BD1"
 %endif
-emit_function_000575d1_part_00
+emit_stop_mixer_voice_part_00
 
 ; raw 00071C37..00071FAE (analyzer-owned function)
 %if ($ - $$) != 0x47637
@@ -10113,7 +10113,7 @@ emit_data_0610_00071fae
 %if ($ - $$) != 0x47E7D
     %error "layout drift at raw 0007247D"
 %endif
-emit_function_00057e7d_part_00
+emit_set_mixer_voice_step_part_00
 
 ; raw 000724FF..00072647 (explicit data)
 %if ($ - $$) != 0x47EFF

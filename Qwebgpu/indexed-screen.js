@@ -116,7 +116,7 @@ export function readSpriteBank(bytes, count, {planar = true} = {}) {
 }
 
 // Opaque blit at 0x234BC and its index-zero-transparent variant at 0x232CC.
-export function drawSprite(planes, {pixels, width, height}, x, y, transparent = false) {
+export function drawSprite(planes, {pixels, width, height}, x, y, transparent = false, coverage) {
   if (x < 0 || y < 0 || x + width > WIDTH || y + height > HEIGHT) return;
   const stride = width / 4;
   let src = 0;
@@ -126,17 +126,20 @@ export function drawSprite(planes, {pixels, width, height}, x, y, transparent = 
     for (let row = 0; row < height; row++, dest += 80) {
       for (let i = 0; i < stride; i++) {
         const index = pixels[src++];
-        if (!transparent || index) planes[dest + i] = index;
+        if (!transparent || index) {
+          planes[dest + i] = index;
+          if (coverage) coverage[dest + i] = 1;
+        }
       }
     }
   }
 }
 
-export function drawLine(planes, text, y, widths, glyphs, left, bank = 0) {
+export function drawLine(planes, text, y, widths, glyphs, left, bank = 0, coverage) {
   const chars = Array.from(text, c => c.charCodeAt(0) - 32);
   let x = left ?? Math.trunc((WIDTH - chars.reduce((sum, i) => sum + widths[i], 0)) / 2);
   for (const i of chars) {
-    drawSprite(planes, glyphs[bank + i], x, y);
+    drawSprite(planes, glyphs[bank + i], x, y, false, coverage);
     x += widths[i];
     if (x > 300) break;
   }
@@ -146,13 +149,30 @@ export function indexedDisplay(display, step) {
   if (step < 1 || step > 63) throw new Error('Invalid SKIPIT.EXE palette step.');
   const planes = new Uint8Array(4 * PLANE);
   const dac = new Uint8Array(768);
+  const coverage = new Uint8Array(planes.length);
+  let bitmap, brightness = 0;
+  function setImage(image) {
+    planes.set(image.planes);
+    bitmap = image.hd;
+    if (bitmap) coverage.fill(0);
+  }
+  function sprite(image, x, y, transparent) {
+    drawSprite(planes, image, x, y, transparent, bitmap ? coverage : undefined);
+  }
+  function line(text, y, widths, glyphs, left, bank) {
+    drawLine(planes, text, y, widths, glyphs, left, bank, bitmap ? coverage : undefined);
+  }
   function present(pixelsChanged = true) {
-    display.presentIndexed(planes, dac, pixelsChanged);
+    display.presentIndexed(planes, dac, pixelsChanged, false, true,
+      bitmap && {bitmap, brightness, coverage});
   }
   async function fade(target, inward, movieFrame) {
     const next = new Uint8Array(768);
     if (!inward) next.set(target);
     let uploadPlanes = true;
+    const hd = bitmap && !movieFrame;
+    const peak = hd ? Math.max(...target) || 63 : 0;
+    let level = inward ? 0 : peak;
     while (true) {
       let changed = false;
       for (let i = 0; i < next.length; i++) {
@@ -162,15 +182,25 @@ export function indexedDisplay(display, step) {
         next[i] += inward ? delta : -delta;
         changed = true;
       }
+      if (hd) {
+        const remaining = inward ? peak - level : level;
+        if (remaining) {
+          const delta = remaining >= step ? step : 1;
+          level += inward ? delta : -delta;
+          brightness = level / peak;
+          changed = true;
+        }
+      }
       if (!changed) return;
       // Both DAC loops pause at the midpoint of the RGB component stream.
       for (const first of [0, 384]) {
         await retraces(1);
         dac.set(next.subarray(first, first + 384), first);
-        display.presentIndexed(movieFrame ?? planes, dac, uploadPlanes, !!movieFrame);
+        if (movieFrame) display.presentIndexed(movieFrame, dac, uploadPlanes, true);
+        else present(uploadPlanes);
         uploadPlanes = false;
       }
     }
   }
-  return { planes, present, fade };
+  return { setImage, sprite, line, present, fade };
 }

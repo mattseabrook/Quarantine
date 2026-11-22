@@ -6,6 +6,56 @@ function linearPixels(planes) {
   return Uint8Array.from({length: 64000}, (_, i) => planes[planeIndex(i%320,Math.floor(i/320))]);
 }
 
+// A sample inside the luminous artwork (x, y) and its last luminous row.
+// The color comes from the installed SPR and the district DAC.
+const coreFixtures = new Map([
+  [0,[0,7,11]], [1,[2,8,17]], [2,[1,2,7]], [3,[2,6,20]],
+  [4,[2,9,17]], [5,[8,6,13]], [6,[3,2,6]], [7,[1,6,20]],
+  [8,[6,10,19]], [9,[3,9,24]], [10,[10,2,6]], [13,[14,32,39]],
+]);
+
+// Bulb arrays in the Core gantry textures, in original 64 x 64 texels.
+// Sample the brightest red bulb in each array using the installed district DAC.
+const cautionArrays = {
+  'KWALL6.SPR': {10:[[4,11,33,18],[19,43,56,50]],11:[[18,1,53,18]]},
+  'KWALL7.SPR': {0:[[30,9,59,16],[21,21,50,28],[6,40,43,47]]},
+};
+
+function cautionPanels(name, image, sprite, dac) {
+  return (cautionArrays[name]?.[image] ?? []).map(([x0,y0,x1,y1]) => {
+    let color = 0, strongest = 0;
+    for (let y=y0; y<y1; y++) {
+      for (let x=x0; x<x1; x++) {
+        const ink = sprite.pixels[y*sprite.width+x], c = 3*ink;
+        const red = dac[c]-Math.max(dac[c+1],dac[c+2]);
+        if (red > strongest) { strongest = red; color = ink; }
+      }
+    }
+    return {u:(x0+x1)/(2*sprite.width),v:(y0+y1)/(2*sprite.height),color};
+  });
+}
+
+function skyColorIndex(pixels, dac) {
+  const frequency = new Uint32Array(256);
+  let dominant = 0, count = 0;
+  for (const index of pixels.subarray(0,320*100)) {
+    const c = index*3;
+    if (!(dac[c] || dac[c+1] || dac[c+2])) continue;
+    if (++frequency[index] > count) { count = frequency[index]; dominant = index; }
+  }
+  return dominant;
+}
+
+export function wallFlags(block, variant, material, flags) {
+  const at = 2*(variant*block.variantStride+material);
+  const bank = block.materials[at], image = block.materials[at+1];
+  const index = bank*14+image;
+  if (at < 0 || at+1 >= block.materials.length || bank >= 16 || index >= flags.length) {
+    throw new Error('Invalid wall material in district block.');
+  }
+  return flags[index];
+}
+
 function welcomeOverlay(planes, {start, font}) {
   start.welcome.forEach((line,i) => {
     let x = 96;
@@ -38,52 +88,113 @@ export function districtMesh(district) {
   }
   const floorMap = pack({width: 320, height: 200, pixels: linearPixels(district.floor.planes)});
   const banks = district.banks.map(bank => bank.map(pack));
-  const sky = pack({width: 320,height: 200,pixels: linearPixels(district.sky.planes)});
-  const exterior = pack(district.exterior);
+  const panels = district.banks.map((bank,k) => bank.map((sprite,i) =>
+    cautionPanels(district.bankNames[k],i,sprite,district.floor.dac)));
+  const skyPixels = linearPixels(district.sky.planes);
+  const skyIndex = district.panorama ? skyColorIndex(skyPixels,district.floor.dac) : district.flatSkyIndex;
+  const sky = pack({width: 320,height: 200,pixels: skyPixels});
   const atlas = new Uint8Array(1024*(y+shelf));
   for (const {sprite,rect} of items) {
     for (let row = 0; row < sprite.height; row++) {
       atlas.set(sprite.pixels.subarray(row*sprite.width,(row+1)*sprite.width), (rect[1]+row)*1024+rect[0]);
     }
   }
-  const vertices = [], ranges = [];
+  const vertices = [], ranges = [], blockLights = [];
   for (const block of district.blocks) {
     for (let variant = 0; variant < 4; variant++) {
-      const first = vertices.length/9;
+      const lights = [];
+      blockLights.push(lights);
+      const first = vertices.length/12;
       for (const face of block.faces) {
-        if (face.material >= block.variantStride) continue;
-        const at = 2*(variant*block.variantStride+face.material);
-        const bank = block.materials[at], image = block.materials[at+1];
-        const rect = face.floor && image < 15 ?
-          [floorMap[0]+image%5*64,floorMap[1]+Math.floor(image/5)*64,64,64] : banks[bank]?.[image];
-        if (!rect) continue;
-        for (let k = 2; k < face.vertices.length; k++) {
-          for (const j of [0,k-1,k]) {
-            const [vx,vy,vz] = face.vertices[j];
-            const u = face.floor ? vx/64 : (j===1 || j===2 ? face.repeats : 0);
-            const v = face.floor ? vy/64 : Number(j>=2);
-            vertices.push(vx,vy,vz,u,v,...rect);
+        if (face.vertices.length < 3 || face.material >= block.variantStride) continue;
+        const [a,b,c] = face.vertices;
+        if (face.floor) {
+          const tile = block.materials[2*(variant*block.variantStride+face.material)+1];
+          const side = Math.sign(c[1]-a[1]);
+          if (!side || tile >= 15) continue;
+          const rect = [floorMap[0]+tile%5*64,floorMap[1]+Math.floor(tile/5)*64,64,64];
+          const period = 64 * 2**face.textureScale;
+          for (let k = 2; k < face.vertices.length; k++) {
+            for (const j of [0,k-1,k]) {
+              const [vx,vy,vz] = face.vertices[j];
+              // 0x447FF dispatches the four rotations in the floor span mapper.
+              const u = [vx,vy,-vx,-vy][face.textureOrientation];
+              const v = [vy,-vx,-vy,vx][face.textureOrientation];
+              vertices.push(vx,vy,vz,u/period,v/period,...rect,0,0,side > 0 ? -2 : -3);
+            }
+          }
+          continue;
+        }
+        const twoSided = wallFlags(block,variant,face.sideMaterial,district.flags) & 2;
+        // Both DOS column loops start at the screen-left endpoint. On a
+        // sectioned wall that changes which pair belongs to a physical span.
+        const sides = face.sectioned && twoSided ? 2 : 1;
+        for (let side = 0; side < sides; side++) {
+          const material = side ? face.material : face.frontMaterial;
+          const at = 2*(variant*block.variantStride+material);
+          const bank = block.materials[at], image = block.materials[at+1];
+          const rect = banks[bank]?.[image];
+          if (!rect) continue;
+          const flags = wallFlags(block,variant,material,district.flags);
+          const masked = face.sectioned ? Number(flags !== 0) : flags & 1;
+          const both = face.sectioned ? 0 : twoSided;
+          const sign = side ? -1 : 1;
+          const bulbs = panels[bank][image];
+          const frontAt = 2*(variant*block.variantStride+face.frontMaterial);
+          const sameArt = block.materials[frontAt] === bank && block.materials[frontAt+1] === image;
+          const reverseUV = side && !(bulbs.length && sameArt);
+          if (!side || !sameArt) {
+            for (let repeat=0; repeat<face.repeats; repeat++) {
+              for (const {u,v,color} of bulbs) {
+                const t = (repeat+(reverseUV ? u : 1-u))/face.repeats;
+                const height = Math.abs(c[2]-a[2]);
+                lights.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1]),
+                  a[2]+v*(c[2]-a[2]),height*1.7,color,height*.20]);
+              }
+            }
+          }
+          for (const j of [0,1,2,0,2,3]) {
+            const end = j === 1 || j === 2;
+            const u = (reverseUV ? end : !end) ? face.repeats : 0;
+            vertices.push(...face.vertices[j],u,Number(j>=2),...rect,
+              sign*(b[0]-a[0]),sign*(b[1]-a[1]),masked|both|(side*4)|(bulbs.length ? 16 : 0));
           }
         }
       }
-      ranges.push({first, count: vertices.length/9-first});
+      for (const obj of block.placements) {
+        // Queue kind 0 uses bank 15, except in district 2 (0x40A17).
+        const bank = district.districtId === 2 ? 6+obj.bank : 15;
+        const rect = banks[bank]?.[obj.image];
+        if (!rect || obj.scale <= 0) continue;
+        const width = rect[2]*obj.scale/64, height = rect[3]*obj.scale/64;
+        const fixture = district.bankNames[bank] === 'KOBJECTS.SPR' && coreFixtures.get(obj.image);
+        let emission = 0;
+        if (fixture) {
+          const [x,row,lastRow] = fixture;
+          const color = district.banks[bank][obj.image].pixels[row*rect[2]+x];
+          emission = 1+color+(lastRow+1)/rect[3];
+          const stop = obj.image === 13;
+          lights.push([obj.x,obj.y,obj.z-height+(row+0.5)*obj.scale/64,
+              height*(stop ? 1.7 : 2.6),color,height*(stop ? 0.32 : 0.48)]);
+        }
+        for (const [u,v] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]) {
+          vertices.push(obj.x,obj.y,obj.z-height*(1-v),u,v,...rect,(u-0.5)*width,emission,-4);
+        }
+      }
+      ranges.push({first, count: vertices.length/12-first});
     }
   }
-  // Billboard vertices use local lateral distance and world vertical units.
-  const cabFirst = vertices.length/9, halfWidth = district.exterior.width/2;
-  for (const [u,v] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]) {
-    vertices.push((2*u-1)*halfWidth,0,20-(1-v)*district.exterior.height,u,v,...exterior);
-  }
-  return {atlas, sky, ranges, vertices: new Float32Array(vertices), cabFirst};
+  return {atlas, sky, skyIndex, blockLights, ranges, vertices: new Float32Array(vertices)};
 }
 
 
 // Static indexed layers are transferred once. The fragment shader selects the
 // wheel pose and welcome text without rebuilding a 320x200 CPU framebuffer.
-export function cockpitTexture(cab, wheels, start, font) {
+export function cockpitTexture(cab, door, wheels, start, font) {
   const stride = 320, wheelHeight = wheels[0].height;
   const textY = 200 + wheels.length*wheelHeight;
-  const pixels = new Uint8Array(stride*(textY+200));
+  const doorY = textY+200;
+  const pixels = new Uint8Array(stride*(doorY+200));
   pixels.set(linearPixels(cab.planes));
   const scratch = new Uint8Array(64000);
   for (let i = 0; i < wheels.length; i++) {
@@ -94,5 +205,6 @@ export function cockpitTexture(cab, wheels, start, font) {
   scratch.fill(0);
   welcomeOverlay(scratch,{start,font});
   pixels.set(linearPixels(scratch),stride*textY);
+  pixels.set(linearPixels(door.planes),stride*doorY);
   return {pixels,wheelHeight,textY};
 }

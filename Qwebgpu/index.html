@@ -15,11 +15,22 @@
       <button type="button" value="n">No</button>
     </div>
     <p id="checkpoint" role="status" hidden></p>
+    <a id="uploadMode" href="?upload=1" hidden>Select game folder</a>
+    <section id="console" aria-label="Game debugging console" hidden>
+      <div class="console-title">Qwebgpu console <span>~ or Escape to close</span></div>
+      <pre id="consoleStatus"></pre>
+      <pre id="consoleOutput" aria-live="polite"></pre>
+      <form id="consoleForm">
+        <label for="consoleInput">&gt;</label>
+        <input id="consoleInput" type="text" autocomplete="off" spellcheck="false" aria-label="Console command">
+      </form>
+    </section>
     <section id="launcher" aria-labelledby="title">
       <h1 id="title">Quarantine</h1>
-      <p>Select your retail MS-DOS game folder. The engine reads its files on this device.</p>
-      <label class="picker">Select game folder<input id="folder" type="file" webkitdirectory multiple></label>
-      <button id="start" disabled>Start</button>
+      <p id="sourceDescription">Game files are served from the local MS-DOS directory.</p>
+      <label class="picker" id="folderPicker" hidden>Select game folder<input id="folder" type="file" webkitdirectory multiple></label>
+      <button id="start" disabled hidden>Start</button>
+      <a id="servedMode" href="?" hidden>Use served files</a>
       <p id="status" role="status"></p>
     </section>
     <form id="answerForm" class="sr" hidden>

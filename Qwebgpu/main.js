@@ -1,5 +1,6 @@
 import {createDisplay} from './display.js';
-import { drawLine, indexedDisplay, readFont, readScreen, retraces } from './indexed-screen.js';
+import { indexedDisplay, readFont, readScreen, retraces } from './indexed-screen.js';
+import {loadHDImage} from './hd-images.js';
 import { readPromptTables, readQuestion, readVoice, firstRand, validateCopyAnswer } from './dos-assets.js';
 import { runMainMenu } from './menu.js';
 import { playIntroDisc } from './cd-audio.js';
@@ -10,6 +11,10 @@ import { playAvi } from './play-avi.js';
 const screen = document.querySelector('#screen');
 const launcher = document.querySelector('#launcher');
 const folder = document.querySelector('#folder');
+const folderPicker = document.querySelector('#folderPicker');
+const uploadModeLink = document.querySelector('#uploadMode');
+const servedModeLink = document.querySelector('#servedMode');
+const sourceDescription = document.querySelector('#sourceDescription');
 const start = document.querySelector('#start');
 const status = document.querySelector('#status');
 const form = document.querySelector('#answerForm');
@@ -17,36 +22,123 @@ const entry = document.querySelector('#answer');
 const questionText = document.querySelector('#question');
 const introPlayedKey = 'qwebgpu.startupAviPlayed';
 const manualVerifiedKey = 'qwebgpu.manualVerified';
+const uploadMode = new URLSearchParams(location.search).has('upload');
 const storyStills = ['DRAKESS4.IMG', 'DRAKESS2.IMG', 'DRAKESS3.IMG', 'DRAKESS6.IMG'];
 const required = [
   ...storyStills, 'INTRO.FLI', 'FONT.SPR',
-  'SKIPIT.EXE', 'COPY.IMG', 'COPYFONT.SPR', 'PW.ENC', 'GAMETEK.IMG',
+  'SKIPIT.EXE', 'GAMETEK.IMG',
   'OPTION.IMG', 'OPTIONC.SPR', 'LOADSCR.IMG', 'SAVEFONT.SPR', 'ASKFONT.SPR', 'WAIT.IMG',
   'CLICKER.VOC', 'EXPLO1.VOC', 'IEGLOW.IMG', 'HYPNO.VOC', 'TITLE.FLI', 'QTITLE.VOC',
 ];
 const files = new Map();
+const pendingFiles = new Map();
 let display;
 let audio;
+let config;
+let configError;
+let uploaded = false;
+
+function updateFolderStatus() {
+  if (configError) {
+    start.disabled = true;
+    status.textContent = configError;
+    return;
+  }
+  if (!config) {
+    start.disabled = true;
+    status.textContent = 'Loading configuration…';
+    return;
+  }
+  const names = config.copyProtection ? [...required, 'COPY.IMG', 'COPYFONT.SPR', 'PW.ENC'] : required;
+  const missing = uploaded ? names.filter(name => !files.has(name)) : [];
+  start.disabled = !uploaded || missing.length > 0;
+  status.textContent = missing.length ? 'Missing from selected folder: ' + missing.join(', ') :
+    !uploaded && config.fileUpload && uploadMode ? 'Select a game folder.' : '';
+  if (!start.disabled && !start.hidden) start.focus();
+}
 
 folder.addEventListener('change', () => {
+  if (!folder.files.length) return;
   files.clear();
+  uploaded = true;
   for (const file of folder.files) {
     if (file.webkitRelativePath.split('/').length > 2) continue;
     files.set(file.name.toUpperCase(), file);
   }
-  const missing = required.filter(name => !files.has(name));
-  start.disabled = missing.length > 0;
-  status.textContent = missing.length ? 'Missing from selected folder: ' + missing.join(', ') : '';
-  if (!start.disabled) start.focus();
+  sourceDescription.textContent = 'Using the selected game folder.';
+  updateFolderStatus();
 });
 
+fetch(new URL('./config.json', import.meta.url), {cache: 'no-store'}).then(async response => {
+  if (!response.ok) throw new Error('Unable to load config.json (HTTP ' + response.status + ').');
+  const value = await response.json();
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      typeof value.copyProtection !== 'boolean' || typeof value.fileUpload !== 'boolean') {
+    throw new Error('config.json must contain boolean copyProtection and fileUpload settings.');
+  }
+  config = value;
+  const choosingFolder = config.fileUpload && uploadMode;
+  folderPicker.hidden = !choosingFolder;
+  start.hidden = !choosingFolder;
+  servedModeLink.hidden = !choosingFolder;
+  uploadModeLink.hidden = !config.fileUpload || choosingFolder;
+  if (choosingFolder) sourceDescription.textContent = 'Select a game folder to use instead of the served directory.';
+  updateFolderStatus();
+  if (!choosingFolder) startGame();
+}).catch(error => {
+  configError = 'Configuration error: ' + error.message;
+  updateFolderStatus();
+});
+
+function assetUrl(name) {
+  if (!/^[a-zA-Z0-9._-]+$/.test(name) || name === '.' || name === '..') {
+    throw new Error('Invalid game asset filename: ' + name);
+  }
+  return new URL('./MS-DOS/' + encodeURIComponent(name), import.meta.url);
+}
+
+async function getFile(name, optional = false) {
+  const key = name.toUpperCase();
+  if (files.has(key)) return files.get(key);
+  if (uploaded) {
+    if (optional) return null;
+    throw new Error('Missing from the selected game folder: ' + name);
+  }
+  let pending = pendingFiles.get(key);
+  if (!pending) {
+    pending = fetch(assetUrl(name)).then(async response => {
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error('Unable to load MS-DOS/' + name + ' (HTTP ' + response.status + ').');
+      const file = await response.blob();
+      files.set(key, file);
+      return file;
+    }).finally(() => pendingFiles.delete(key));
+    pendingFiles.set(key, pending);
+  }
+  const file = await pending;
+  if (!file && !optional) throw new Error('Missing from the served MS-DOS directory: ' + name);
+  return file;
+}
+
+async function getAudioTrack(name) {
+  if (uploaded) return getFile(name, true);
+  const url = assetUrl(name);
+  const response = await fetch(url, {method:'HEAD'});
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('Unable to access MS-DOS/' + name + ' (HTTP ' + response.status + ').');
+  return url.href;
+}
+
 async function bytes(name) {
-  const file = files.get(name);
-  if (!file) throw new Error('Missing from the selected game folder: ' + name);
-  return new Uint8Array(await file.arrayBuffer());
+  return new Uint8Array(await (await getFile(name)).arrayBuffer());
 }
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
+
+async function loadImage(name) {
+  const [raw, hd] = await Promise.all([bytes(name), loadHDImage(name)]);
+  return {...readScreen(raw, name), hd};
+}
 
 function sound(buffer) {
   const source = audio.createBufferSource();
@@ -65,9 +157,9 @@ async function manualChallenge({lines, widths, glyphs, background, question, vga
   ];
   const digits = ['0', '0', '0'];
   let cursor = 0, blink = 0, attempts = 3, result = null;
-  function line(text, y) { drawLine(vga.planes, text, y, widths, glyphs); }
+  function line(text, y) { vga.line(text, y, widths, glyphs); }
   function draw() {
-    vga.planes.set(background.planes);
+    vga.setImage(background);
     prompts.forEach((prompt, i) => line(prompt, 70 + i * 10));
     if (result === null) {
       const visible = digits.slice();
@@ -144,9 +236,9 @@ async function manualChallenge({lines, widths, glyphs, background, question, vga
 }
 
 async function splash(vga, image, voice) {
-  vga.planes.set(image.planes);
+  vga.setImage(image);
   await vga.fade(image.dac, true);
-  if (voice) await sound(voice).ended;
+  if (voice && audio.state === 'running') await sound(voice).ended;
   else await retraces(180);
   await vga.fade(image.dac, false);
 }
@@ -175,7 +267,7 @@ async function playAttract(movie, voice, vga, tables) {
     screen.focus();
     for (;;) {
       skipped = false;
-      const playback = voice && sound(voice);
+      const playback = voice && audio.state === 'running' && sound(voice);
       let palette;
       try {
         palette = await playMovie(movie, 'TITLE.FLI', 4, () => skipped);
@@ -188,8 +280,8 @@ async function playAttract(movie, voice, vga, tables) {
       // Early input during the still sequence returns to the title at 0x10285.
       for (const name of storyStills) {
         if (skipped) break;
-        const image = readScreen(await bytes(name), name);
-        vga.planes.set(image.planes);
+        const image = await loadImage(name);
+        vga.setImage(image);
         await vga.fade(image.dac, true);
         const until = performance.now() + 38 * 1000 / 18.2065;
         while (!skipped && performance.now() < until) await wait(20);
@@ -198,7 +290,7 @@ async function playAttract(movie, voice, vga, tables) {
       if (skipped) continue;
       intro ??= await bytes('INTRO.FLI');
       font ??= await bytes('FONT.SPR');
-      stopDisc = playIntroDisc(files);
+      stopDisc = playIntroDisc(getAudioTrack);
       palette = await playMovie(intro, 'INTRO.FLI', 1, () => skipped);
       // The DOS caller still scrolls over the current frame if the player
       // interrupted the movie. A subsequent key leaves the scroll itself.
@@ -223,7 +315,7 @@ async function playAttract(movie, voice, vga, tables) {
 }
 
 async function playWrapperMovie(name, onStart) {
-  const file = files.get(name);
+  const file = await getFile(name, true);
   if (!file) return;
   let firstFrame = true;
   await playAvi(file, audio, screen, pixels => {
@@ -239,52 +331,71 @@ async function playWrapperMovie(name, onStart) {
   });
 }
 
-start.addEventListener('click', async () => {
+async function startGame() {
   start.disabled = folder.disabled = true;
   status.textContent = 'Opening game files…';
   const images = [];
+  const audioEvents = new AbortController();
   try {
-    if (!audio && window.AudioContext) audio = new AudioContext({latencyHint: 0.005});
-    if (audio?.state === 'suspended') await audio.resume();
+    if (!window.AudioContext) throw new Error('Web Audio is unavailable.');
+    if (!audio) audio = new AudioContext({latencyHint: 0.005});
+    const unlockAudio = () => {
+      if (audio.state === 'suspended') {
+        audio.resume().catch(error => console.error('Unable to enable game audio:', error));
+      }
+    };
+    document.addEventListener('keydown', unlockAudio, {signal: audioEvents.signal});
+    document.addEventListener('pointerdown', unlockAudio, {signal: audioEvents.signal});
+    unlockAudio();
     display ??= await createDisplay(screen);
     if (!sessionStorage.getItem(introPlayedKey)) {
       await playWrapperMovie('BQUAR1DK.AVI', () => sessionStorage.setItem(introPlayedKey, '1'));
     }
-    for (const name of ['COPY.IMG', 'GAMETEK.IMG', 'IEGLOW.IMG']) {
-      images.push(readScreen(await bytes(name), name));
+    for (const name of ['GAMETEK.IMG', 'IEGLOW.IMG']) {
+      images.push(await loadImage(name));
     }
     const tables = readPromptTables(await bytes('SKIPIT.EXE'));
-    const questions = await bytes('PW.ENC');
-    const glyphs = readFont(await bytes('COPYFONT.SPR'));
+    const challenge = config.copyProtection ? {
+      background: await loadImage('COPY.IMG'),
+      questions: await bytes('PW.ENC'),
+      glyphs: readFont(await bytes('COPYFONT.SPR')),
+    } : null;
     const voices = [];
     for (const name of ['EXPLO1.VOC', 'HYPNO.VOC', 'QTITLE.VOC', 'CLICKER.VOC']) {
-      voices.push(audio?.state === 'running' ? readVoice(audio, await bytes(name), name) : null);
+      voices.push(readVoice(audio, await bytes(name), name));
     }
     const movie = await bytes('TITLE.FLI');
     launcher.hidden = true;
     screen.hidden = false;
     for (;;) {
       const vga = indexedDisplay(display, tables.step);
-      if (!sessionStorage.getItem(manualVerifiedKey)) {
+      if (challenge && !sessionStorage.getItem(manualVerifiedKey)) {
         const seed = Math.round(Date.now() / 1000);
-        const question = readQuestion(questions, firstRand(seed));
-        if (!await manualChallenge({...tables, question, glyphs, background: images[0], vga, click: voices[3]})) {
-          status.textContent = 'Manual challenge ended. Select Start to try again.';
+        const question = readQuestion(challenge.questions, firstRand(seed));
+        if (!await manualChallenge({...tables, question, glyphs: challenge.glyphs,
+          background: challenge.background, vga, click: voices[3]})) {
+          status.textContent = 'Manual challenge ended. Select Retry to try again.';
           break;
         }
       }
-      await splash(vga, images[1], voices[0]);
-      await splash(vga, images[2], voices[1]);
+      await splash(vga, images[0], voices[0]);
+      await splash(vga, images[1], voices[1]);
       await playAttract(movie, voices[2], vga, tables);
-      await runMainMenu({screen, display, vga, tables, bytes, files, click: () => voices[3] && sound(voices[3])});
+      await runMainMenu({screen, display, vga, tables, bytes, loadImage, getFile, getAudioTrack, audio,
+        click: () => audio.state === 'running' && sound(voices[3])});
       await playWrapperMovie('BQUAR2DK.AVI');
     }
   } catch (error) {
     status.textContent = error.message || 'Unable to start the game.';
   } finally {
+    audioEvents.abort();
     screen.hidden = form.hidden = true;
     launcher.hidden = false;
     start.disabled = folder.disabled = false;
+    start.hidden = false;
+    start.textContent = 'Retry';
     start.focus();
   }
-});
+}
+
+start.addEventListener('click', startGame);

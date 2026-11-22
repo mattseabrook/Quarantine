@@ -1,7 +1,11 @@
-import {drawLine, drawSprite, readScreen, readSpriteBank} from './indexed-screen.js';
+import {readSpriteBank} from './indexed-screen.js';
 import {readDistrict} from './district.js';
 import {createCabView, prepareCabPipelines} from './cab-view.js';
-import {driveTick, newDriver, ticksPerSecond} from './driving.js';
+import {driveTick, newDriver, ticksPerSecond, turnView, zoomChase} from './driving.js';
+import {createConsole} from './console.js';
+import {loadDrivingSounds,createDrivingAudio} from './driving-audio.js';
+import {createDrivingDisc} from './cd-audio.js';
+import {loadMap, createMapView} from './map-view.js';
 
 const coldRows = [0, 2, 4];
 const labels = ['New Game', 'Resume', 'Load', 'Save', 'Quit Game'];
@@ -29,8 +33,8 @@ function readKey(screen, {pointerKey, pointerHover, buttons, activationEvent = '
     function pointerPosition(event) {
       const rect = screen.getBoundingClientRect();
       return {
-        x: (event.clientX - rect.left) * screen.width / rect.width,
-        y: (event.clientY - rect.top) * screen.height / rect.height,
+        x: (event.clientX - rect.left) * 320 / rect.width,
+        y: (event.clientY - rect.top) * 200 / rect.height,
       };
     }
     screen.addEventListener(activationEvent, event => {
@@ -52,24 +56,25 @@ async function slotHeader(file) {
   return {occupied: header[0] === 49, text: text.padEnd(40)};
 }
 
-async function loadMenu({screen, vga, tables, bytes, files, click}) {
-  const image = readScreen(await bytes('LOADSCR.IMG'), 'LOADSCR.IMG');
+async function loadMenu({screen, vga, tables, bytes, loadImage, getFile, click}) {
+  const image = await loadImage('LOADSCR.IMG');
   const saveFont = await bytes('SAVEFONT.SPR');
   const slots = readSpriteBank(saveFont, 120);
   const prompts = readSpriteBank(await bytes('ASKFONT.SPR'), 59);
-  const headers = await Promise.all(Array.from({length: 5}, (_, i) => slotHeader(files.get('SAVE' + i + '.GAM'))));
+  const headers = await Promise.all(Array.from({length: 5}, async (_, i) =>
+    slotHeader(await getFile('SAVE' + i + '.GAM', true))));
   let selected = 0, mode = 'browse', restore = false;
   const buttons = document.querySelector('#restoreChoice');
   const promptIds = {browse: [1, 2], empty: [7, 8], confirm: [3]};
   function draw() {
-    vga.planes.set(image.planes);
+    vga.setImage(image);
     headers.forEach(({text}, i) => {
       const active = i === selected;
-      drawSprite(vga.planes, slots[active ? 119 : 118], 12, 45 + i * 23);
-      drawLine(vga.planes, text, 44 + i * 23, tables.slotWidths, slots, 30, active ? 59 : 0);
+      vga.sprite(slots[active ? 119 : 118], 12, 45 + i * 23);
+      vga.line(text, 44 + i * 23, tables.slotWidths, slots, 30, active ? 59 : 0);
     });
     buttons.hidden = mode !== 'confirm';
-    promptIds[mode].forEach((id, i) => drawLine(vga.planes, tables.lines[id], 170 + i * 10, tables.widths, prompts));
+    promptIds[mode].forEach((id, i) => vga.line(tables.lines[id], 170 + i * 10, tables.widths, prompts));
     screen.setAttribute('aria-label', 'Load game. Slot ' + (selected + 1) + '. ' + headers[selected].text.trim() + '. ' +
       promptIds[mode].map(id => tables.lines[id]).join(' '));
     vga.present();
@@ -110,9 +115,9 @@ async function loadMenu({screen, vga, tables, bytes, files, click}) {
   return restore;
 }
 
-async function loadFromMenu({screen, display, vga, bytes, files, tables}, restoring) {
-  const image = readScreen(await bytes('WAIT.IMG'), 'WAIT.IMG');
-  vga.planes.set(image.planes);
+async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, audio}, restoring) {
+  const image = await loadImage('WAIT.IMG');
+  vga.setImage(image);
   vga.present();
   await vga.fade(image.dac, true);
   const hint = document.querySelector('#checkpoint');
@@ -120,11 +125,11 @@ async function loadFromMenu({screen, display, vga, bytes, files, tables}, restor
     let message = 'Saved-game restoration stops here.';
     if (!restoring) {
       try {
-        const [district,pipelines] = await Promise.all([
-          readDistrict(files,tables.newGame), prepareCabPipelines(display),
+        const [district,pipelines,sounds] = await Promise.all([
+          readDistrict(getFile,tables.newGame), prepareCabPipelines(display), loadDrivingSounds(audio,getFile),
         ]);
         await vga.fade(image.dac, false);
-        return {district, pipelines, car: newDriver(district), welcome: true, resolution: Infinity};
+        return {district, pipelines, sounds, car: newDriver(district), welcome: true, resolution: Infinity};
       } catch (error) {
         message = error.message;
       }
@@ -139,51 +144,168 @@ async function loadFromMenu({screen, display, vga, bytes, files, tables}, restor
   await vga.fade(image.dac, false);
 }
 
-async function enterCab({display, screen}, session) {
+async function enterCab({display, screen, getAudioTrack, bytes, audio}, session) {
   const {car, district} = session;
   const lastTick = {...car}, visibleCar = {...car};
   const events = new AbortController(), options = {signal: events.signal};
   const held = new Set(), dt = 1/ticksPerSecond;
   const status = document.querySelector('#checkpoint');
   let hideStatus;
-  function reportMode() {
-    status.textContent = screen.width + ' × ' + screen.height;
+  function report(message) {
+    status.textContent = message;
     status.hidden = false;
+    if (message.startsWith('CD audio:')) debugConsole?.write(message);
     clearTimeout(hideStatus);
-    hideStatus = setTimeout(() => { status.hidden = true; },1200);
+    hideStatus = setTimeout(() => { status.hidden = true; },message.startsWith('CD audio:') ? 5000 : 1200);
   }
+  function reportMode() { report(screen.width + ' × ' + screen.height); }
   const frameMs = 1000/60;
-  let view, animation, previous, nextFrame, accumulator = 0, fade = 0, leaving = false;
-  let resizeNeeded = true;
+  let view, debugConsole, disc, effects, mapView, mapLoading = false, animation, previous, nextFrame, accumulator = 0, fade = 0, leaving = false, fps = 0;
+  let resizeNeeded = true, mouseCaptured = false, edgeTurn = 0;
+  function releaseMouse() {
+    mouseCaptured = false;
+    edgeTurn = 0;
+    if (document.pointerLockElement === screen) document.exitPointerLock();
+  }
+  function release() {
+    effects?.setActive(false);
+    releaseMouse();
+    held.clear();
+    accumulator = 0;
+    Object.assign(lastTick,car);
+    previous = nextFrame = undefined;
+  }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. F cycles cameras. Minus and plus change resolution. Escape opens the menu.');
+      'W and S drive, A and D steer. Click to capture the mouse and look left or right. M opens the map. F switches between cockpit and chase. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens the debugging console. Minus and plus change resolution. Escape opens the menu.');
   }
   function dismiss() { session.welcome = false; describe(); }
+  async function openMap() {
+    mapLoading = true;
+    release();
+    try {
+      session.map ??= await loadMap(bytes);
+      if (leaving || events.signal.aborted) return;
+      mapView = createMapView(display,session.map,car,district.start.mapDisplay);
+      screen.width = 320; screen.height = 200;
+      screen.classList.remove('driving','hide-cursor');
+      screen.setAttribute('aria-label','City map. Arrow keys move the map cursor. M or Escape returns to driving.');
+    } catch (error) {
+      console.error('Unable to open map:', error);
+      report('Map: ' + error.message);
+    } finally {
+      mapLoading = false;
+    }
+  }
+  function closeMap() {
+    mapView = null;
+    screen.classList.add('driving','hide-cursor');
+    resizeNeeded = true;
+    release();
+    describe();
+  }
   screen.classList.add('driving');
+  screen.classList.add('hide-cursor');
   screen.focus();
   try {
     view = createCabView(screen, display, district, session);
+    debugConsole = createConsole(screen,district,car,view);
+    effects = createDrivingAudio(audio,session.sounds);
+    disc = createDrivingDisc(getAudioTrack,report,session.cdTrack);
+    disc.start();
     describe();
     document.addEventListener('keydown', e => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.key === 'Tab' || leaving) return;
+      if (e.code === 'Backquote') {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (debugConsole.isOpen()) debugConsole.close();
+        else debugConsole.open();
+        screen.classList.toggle('hide-cursor', !debugConsole.isOpen());
+        release();
+        return;
+      }
+      if (debugConsole.isOpen()) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          debugConsole.close();
+          screen.classList.add('hide-cursor');
+          release();
+        }
+        return;
+      }
       e.preventDefault();
+      if (mapView) {
+        if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyM')) closeMap();
+        else if (e.code === 'ArrowLeft') mapView.move(-2,0);
+        else if (e.code === 'ArrowRight') mapView.move(2,0);
+        else if (e.code === 'ArrowUp') mapView.move(0,-2);
+        else if (e.code === 'ArrowDown') mapView.move(0,2);
+        return;
+      }
+      if (mapLoading) return;
       if (e.repeat) return;
       if (session.welcome) { dismiss(); return; }
       if (e.code === 'Escape') { leaving = true; held.clear(); }
-      else if (e.code === 'KeyF') car.camera = (car.camera+1)%4;
+      else if (e.code === 'KeyF') {
+        edgeTurn = 0;
+        car.camera = car.camera ? 0 : 1;
+        if (car.camera) captureMouse();
+      }
+      else if (e.code === 'KeyM') openMap();
+      else if (e.code === 'KeyC' || e.code === 'BracketRight') disc.change(1);
+      else if (e.code === 'BracketLeft') disc.change(-1);
+      else if (e.code === 'KeyP') disc.toggle();
       else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') { view.resize(1); reportMode(); }
       else if (e.key === '-' || e.code === 'NumpadSubtract') { view.resize(-1); reportMode(); }
       else held.add(e.code);
     }, options);
     document.addEventListener('keyup', e => held.delete(e.code), options);
-    screen.addEventListener('click', e => { if (session.welcome && e.button === 0) dismiss(); }, options);
-    function release() {
-      held.clear();
-      accumulator = 0;
-      Object.assign(lastTick,car);
-      previous = nextFrame = undefined;
+    function drivingInput() {
+      return !mapView && !mapLoading && !leaving && !debugConsole.isOpen() && document.hasFocus();
     }
+    document.addEventListener('pointerlockchange', () => {
+      const captured = document.pointerLockElement === screen;
+      if (mouseCaptured && !captured && drivingInput() && !document.hidden) {
+        // Browsers can consume Escape while releasing pointer lock.
+        leaving = true;
+        held.clear();
+      }
+      mouseCaptured = captured;
+      edgeTurn = 0;
+      if (captured && !drivingInput()) releaseMouse();
+    }, options);
+    function captureMouse() {
+      if (document.pointerLockElement === screen) return;
+      try {
+        screen.requestPointerLock()?.then(() => {
+          if (events.signal.aborted || !drivingInput()) releaseMouse();
+        }, () => {
+          if (!events.signal.aborted && drivingInput()) report('Click the driving view to capture the mouse.');
+        });
+      } catch { report('Move the pointer to either edge to keep orbiting in chase.'); }
+    }
+    screen.addEventListener('click', e => {
+      if (e.button !== 0 || !drivingInput()) return;
+      if (session.welcome) dismiss();
+      captureMouse();
+    }, options);
+    screen.addEventListener('wheel', e => {
+      if (!car.camera || !drivingInput() || session.welcome || e.ctrlKey) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? screen.clientHeight : 1;
+      zoomChase(car,e.deltaY*unit);
+    }, {...options,passive:false});
+    document.addEventListener('mousemove', e => {
+      if (!session.welcome && drivingInput() && (document.pointerLockElement === screen || e.target === screen)) {
+        turnView(car,e.movementX);
+        if (car.camera && !document.pointerLockElement) {
+          const bounds = screen.getBoundingClientRect();
+          edgeTurn = e.clientX <= bounds.left+3 ? -1 : e.clientX >= bounds.right-3 ? 1 : 0;
+        }
+      }
+    }, options);
+    screen.addEventListener('mouseleave', () => { edgeTurn = 0; }, options);
     window.addEventListener('blur', release, options);
     document.addEventListener('visibilitychange', release, options);
     window.addEventListener('resize', () => { resizeNeeded = true; }, options);
@@ -195,18 +317,24 @@ async function enterCab({display, screen}, session) {
           // Missed presentation slots expire without a burst of catch-up draws.
           if (now+0.2 < nextFrame) { animation = requestAnimationFrame(frame); return; }
           nextFrame += (1+Math.floor((now+0.2-nextFrame)/frameMs))*frameMs;
-          if (resizeNeeded) { view.resize(); resizeNeeded = false; }
-          const elapsed = Math.min(0.1,(now-(previous ?? now))/1000);
+          if (resizeNeeded && !mapView) { view.resize(); resizeNeeded = false; }
+          const frameElapsed = (now-(previous ?? now))/1000;
+          const elapsed = Math.min(0.1,frameElapsed);
           previous = now;
+          if (frameElapsed > 0) fps = fps ? fps*.9 + .1/frameElapsed : 1/frameElapsed;
           fade = Math.max(0,Math.min(1,fade + (leaving ? -1 : 1)*elapsed*2));
-          if (!session.welcome && !leaving && document.hasFocus()) {
+          const driving = drivingInput() && !document.hidden;
+          effects.setActive(driving);
+          if (driving && !session.welcome) {
+            if (car.camera && edgeTurn && !mouseCaptured) turnView(car,edgeTurn*900*elapsed);
             accumulator += elapsed;
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
-              driveTick(car,district,held);
+              if (driveTick(car,district,held)) effects.contact();
               accumulator -= dt;
             }
           }
+          if (driving) effects.update(car.speed);
           const alpha = accumulator/dt;
           visibleCar.x = lastTick.x + (car.x-lastTick.x)*alpha;
           visibleCar.y = lastTick.y + (car.y-lastTick.y)*alpha;
@@ -214,7 +342,12 @@ async function enterCab({display, screen}, session) {
           visibleCar.angle = lastTick.angle + rotation*alpha;
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
-          view.draw(visibleCar,session.welcome,fade);
+          visibleCar.lookYaw = car.lookYaw;
+          visibleCar.orbitYaw = car.orbitYaw;
+          visibleCar.chaseDistance = car.chaseDistance;
+          if (mapView) mapView.draw();
+          else view.draw(visibleCar,session.welcome,fade);
+          debugConsole.update(now,fps);
           if (leaving && fade === 0) done();
           else animation = requestAnimationFrame(frame);
         } catch (error) { fail(error); }
@@ -222,26 +355,31 @@ async function enterCab({display, screen}, session) {
       animation = requestAnimationFrame(frame);
     });
   } finally {
+    releaseMouse();
     events.abort();
+    effects?.close();
+    if (disc) { session.cdTrack = disc.currentTrack(); disc.close(); }
     clearTimeout(hideStatus);
     status.hidden = true;
     cancelAnimationFrame(animation);
+    debugConsole?.destroy();
     view?.close();
     screen.classList.remove('driving');
+    screen.classList.remove('hide-cursor');
     screen.width = 320;
     screen.height = 200;
   }
 }
 
 export async function runMainMenu(game) {
-  const {screen, vga, tables, bytes, click} = game;
-  const image = readScreen(await bytes('OPTION.IMG'), 'OPTION.IMG');
+  const {screen, vga, tables, bytes, loadImage, click} = game;
+  const image = await loadImage('OPTION.IMG');
   const choices = readSpriteBank(await bytes('OPTIONC.SPR'), 5);
   let selected = 0, session;
   let rows = coldRows;
   function draw() {
-    vga.planes.set(image.planes);
-    drawSprite(vga.planes, choices[selected], menuX, tables.menuY[selected], true);
+    vga.setImage(image);
+    vga.sprite(choices[selected], menuX, tables.menuY[selected], true);
     screen.setAttribute('aria-label', 'Main menu. ' + labels[selected] + '. Up, Down, W or S to move. Enter to select.');
     vga.present();
   }

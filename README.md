@@ -5,7 +5,7 @@ Verified DOS target **September 28, 1994 retail `SKIPIT.EXE`**
 [![SKIPIT.EXE NASM rebuild](https://img.shields.io/badge/SKIPIT.EXE%20NASM%20rebuild-passing-2ea44f?logo=nasm)](disassembly/SKIPIT/)
 [![Q2026 Windows build](https://img.shields.io/badge/Q2026%20Windows%20build-passing-2ea44f?logo=vulkan)](Q2026/)
 [![Qwebgpu New Game](https://img.shields.io/badge/Qwebgpu%20New%20Game-awaiting%20playtest-blue)](Qwebgpu/)
-[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-12.77%25-blue)](#disassembly-progress)
+[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-15.32%25-blue)](#disassembly-progress)
 
 This repository contains the canonical lossless NASM reconstruction of the
 retail MS-DOS game executable from *Quarantine*.
@@ -63,6 +63,8 @@ directives, and rejects a build whose SHA-256 differs from the retail file.
   - [VOC and CD audio](#voc-and-cd-audio)
   - [MAP](#map)
   - [BLK](#blk)
+    - [Sky color and street lighting](#sky-color-and-street-lighting)
+    - [The structure east of the New Game spawn](#the-structure-east-of-the-new-game-spawn)
   - [BSP](#bsp)
   - [DAT](#dat)
   - [ENC](#enc)
@@ -87,29 +89,30 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
 ```
 
 Open `http://127.0.0.1:8000/` in desktop Chrome or Brave with WebGPU
-available. Select the retail `MS-DOS` folder and choose **Start**. The
-browser reads the files locally. On a separate computer, use HTTPS or the
+available. Qwebgpu starts from the retail files served through
+`Qwebgpu/MS-DOS`. Folder selection and copy protection default to off in
+`Qwebgpu/config.json`. Place matching HD PNGs in `Qwebgpu/HD`. On a separate computer, use HTTPS or the
 SSH tunnel in the [browser instructions](Qwebgpu/README.md).
 
 | Screen | Input | Current behavior |
 | --- | --- | --- |
 | Opening AVI | Start from a fresh tab | Play `BQUAR1DK.AVI` before the SKIPIT startup sequence |
-| Manual challenge | Digits, Backspace, Enter | Submit the three-digit response from the retail manual once per tab |
+| Manual challenge, when enabled | Digits, Backspace, Enter | Submit the three-digit response from the retail manual once per tab |
 | Animated title | Key or tap | Open the main menu |
 | Main menu | Arrow keys or W/S, Enter or Space, mouse hover and click | New Game and Load are active. Quit Game plays `BQUAR2DK.AVI` and returns to the logo and title sequence. |
 | Save slots | Arrows, Enter, Y/N, Escape | Browse the five slot headers and answer the restore prompt |
 | New Game | Key or click at the welcome prompt | Leave the loading image, enter the Core cab view and dismiss the prompt. Escape opens the menu and Resume restores the view. |
-| Driving | W/S, A/D, F, −/+ | Apply thrust or brake, steer, cycle the cockpit and three chase distances, and step the render resolution. |
+| Driving | W/S, A/D, mouse, F, −/+ | W/S apply thrust or brake, A/D steer, and F toggles cockpit or chase. Move the mouse to look, scroll to zoom outside, and use −/+ for render resolution. |
 | Save restoration checkpoint | Key or tap | Return to the menu after inspecting a saved-game header. |
 
 ### Build status
 
-| Target | Entry point | Verified result |
+| Target | Entry point | Last reported result |
 | --- | --- | --- |
 | Retail DOS executable | `./disassembly/SKIPIT/build.sh` | 572,501 bytes, SHA-256 and independent `cmp` match the reference |
 | 16-bit joystick object | Same script | 174 bytes, independent SHA-256 passes |
 | Q2026 Windows/Vulkan fixture | `./build.sh` | Compiles and links `Q2026/Quarantine.exe`. The target renders its fixture map. |
-| Qwebgpu | Static JavaScript modules | Earlier Chromium run covered AVI playback, startup and the main menu. Driving, the revised click handler, cameras and widescreen rendering await player testing. |
+| Qwebgpu | Static JavaScript modules | Earlier Chromium run covered AVI playback, startup and the main menu. The current New Game street renderer awaits player testing. The latest sky palette trace and WebGPU lighting changes await a rebuild and player testing respectively. |
 
 ## Build
 
@@ -134,8 +137,8 @@ It does not modify or deploy into `MS-DOS/`.
 | Measure | Count | Coverage |
 | --- | ---: | ---: |
 | Executable bytes represented explicitly | 572,501 / 572,501 | 100% |
-| Entries with a descriptive role | 130 / 1,018 | 12.77% |
-| Entries with provisional names | 888 / 1,018 | 87.23% |
+| Entries with a descriptive role | 156 / 1,018 | 15.32% |
+| Entries with provisional names | 862 / 1,018 | 84.68% |
 
 The semantic percentage counts working names supported by evidence, including
 entries marked probable. It measures named function entries. The code-object
@@ -158,9 +161,9 @@ in the other objects.
 - both SHA-256 and an independent byte comparison match the retail executable.
 
 Verified names appear in semantic filenames, labels, macros, and evidence
-comments. The latest pass identifies four entries in the New Game path,
-covering district resource loading, collision and trigger tables, setup for
-play, and the district state table.
+comments. Recent entries trace the district palette, BSP render queue, object projection,
+wall columns, sprite bank conversion and palette shading. Their addresses and roles appear in
+the [disassembly index](disassembly/SKIPIT/README.md#media-and-district-resource-loaders).
 
 ## Source organization
 
@@ -455,11 +458,11 @@ Qwebgpu fades out WAIT automatically and keeps the district and player state
 when opening the menu. The GPU draws nearby MAP cells as instances of textured
 BLK geometry. The normal keyboard drive path uses the executable's thrust
 curve and heading table. The browser uses a fixed 35 Hz simulation and
-segment-based wall contact. Gameplay presentation targets 60 FPS. Three
+five swept probes for cab-to-wall contact. Gameplay presentation targets 60 FPS. Three
 workers prepare district assets while WebGPU compiles the pipelines. The
-cockpit and three chase views share one full-detail renderer.
+cockpit and continuously adjustable chase view share one full-detail renderer.
 DOS BSP traversal, damage, airborne motion,
-texture animation, distance shading, traffic and the full instrument panel
+texture animation, exact DOS scan conversion, traffic and the full instrument panel
 remain open.
 [Native cab renderer](Qwebgpu/cab-view.js).
 
@@ -476,7 +479,7 @@ remain open.
 | Garage and armor | Shops sell weapons and upgrades. The handbook lists three armor tiers and a temporary turbo boost. | `BAY*.DAT` and `BAY*.KPG` cover shop data and door transitions. The complete inventory and pricing rules remain under analysis. |
 | Map and navigation | M opens the map, arrow keys move the waypoint, and Escape returns to driving. A fare updates the Wayfinder destination. | `KEMOMAP*.ZZZ` provide indexed map layers. The game draws icons and state overlays through the map routine, including calls around `0x50668`. |
 | Saves and pause | Startup enables New Game, Load, and Quit. In-game options also enable Resume and Save. Five save slots carry an occupancy flag and description. | The DOS dispatcher and serialization walk are recovered. Individual save ranges still need names. |
-| Audio | Short VOC effects, streamed voices, continuous engine sound, and MSCDEX CD playback have separate control paths. | Named routines cover effect bank loading, streamed voice, engine start/update/stop, and CD play/stop. |
+| Audio | Short VOC effects, streamed voices, continuous engine sound, and MSCDEX CD playback have separate control paths. | Qwebgpu loops engine bank slot 43 (`ENG7.VOC`). `0x4ACA6` sets a 16.16 pitch step from absolute speed, capped at 350. A head-on wall hit at `0x26489` requests slot 16 (`IMPACT.VOC`). |
 
 The gameplay controls and stated progression come from the supplied
 `QUARANTN.TXT` handbook and `README.TXT` update notes.
@@ -488,9 +491,9 @@ messages and their cross-references.
 The DOS projection at `0x30DC8` computes screen X as
 `160 + 256 * side / max(depth, 12)`. The half-width is 160 pixels and the
 focal length is 256 pixels, giving a horizontal field of view of
-`2 * atan(160/256)`, approximately **64.0°**. Qwebgpu uses **110° horizontal**
-for its cockpit and chase cameras. Its gameplay pass shades every output pixel.
-[DOS projection routine](disassembly/SKIPIT/src/functions/unresolved/00030dc8_fun_00030dc8.asm).
+`2 * atan(160/256)`, approximately **64.0°**. Qwebgpu uses up to **90° horizontal** in the cockpit and **110°** in chase.
+The cockpit lens tightens on narrower windows so the panels fill the frame vertically. Its gameplay pass shades every output pixel.
+[DOS projection routine](disassembly/SKIPIT/src/functions/graphics/project_view_points_at_height.asm).
 
 | Component | Recovered layout | Runtime evidence |
 | --- | --- | --- |
@@ -613,7 +616,7 @@ The video codec is Duck TrueMotion 1 and audio is unsigned 8-bit PCM.
 The installer uses `DUKDOS.EXE` with audio and `DUKDOSNA.EXE` for the
 silent option. Stream properties were checked with FFprobe.
 
-Qwebgpu reads both AVIs directly from the selected local folder. It plays
+Qwebgpu reads both AVIs from the served game directory or selected folder. It plays
 the opening clip once per tab and uses the closing clip as the Quit Game
 action before restarting SKIPIT startup in that tab. The worker and GPU
 path are described in the [browser documentation](Qwebgpu/README.md#avi-playback).
@@ -678,7 +681,10 @@ and wall segments. Adding `(135 * 512, 19 * 512)` places that geometry in
 world coordinates. The same block can appear at many addresses with different
 materials. SKIPIT builds partitions of the geometry for its renderer.
 Qwebgpu uploads a mesh for each block and material variant and lets the GPU
-depth buffer resolve overlapping surfaces. The in-game navigation map uses
+depth buffer resolve overlapping surfaces. The DOS wall routines at
+`0x41D9C` and `0x42258` reject reverse-facing walls unless bit 1 of the
+district `TEXTURE%d.DAT` material flag is set; bit 0 enables transparent
+pixels and bit 3 marks non-solid walls. The in-game navigation map uses
 separate KEMOMAP overlays.
 
 | Offset | Type | Field | Meaning |
@@ -715,19 +721,100 @@ the retail corpus. [District loader](disassembly/SKIPIT/src/functions/resource_i
 | 0 | 18 | Read directly at `0x42C7B` |
 | 1 | 18 | Read one byte and a separate 17-byte tail into temporary geometry state |
 | 2 | 2 | Read a byte pair and resolve the pair against the texture flag table |
-| 3 | 12 | Read into a transient group and expand it before partition construction |
+| 3 | 12 | Load static object placements, then attach their linked list to the constructed BSP at `0x4348C` |
 
 | Group | Disk offset | Interpretation used by the geometry builder |
 | --- | --- | --- |
-| 0 | +3, +4, +6 | Signed height byte, vertex count word, then up to four XYZ byte triples. The builder scales each planar coordinate by 32 and computes the face height as `20 + 4 * heightByte`. |
+| 0 | +3, +4, +6 | Signed height byte, signed vertex count byte, then up to four three-byte vertex records. The builder scales each planar coordinate by 32 and computes the face height as `20 + 4 * heightByte`. |
 | 1 | +0, +2, +4 | Signed horizontal repeat count and signed word X/Y steps. The far endpoint equals the start plus the repeat count times the step. |
 | 1 | +6, +8, +10, +12 | Height span, starting X, starting Y and base Z, all signed words. The upper edge is at `baseZ - span`. |
 | 2 | +0, +1 | Material bank and image index. Map bits 8–9 select one of four material lists for a block. |
+| 3 | +0, +2, +4 | Three signed words give the local X, Y and bottom Z of a camera-facing sprite. |
+| 3 | +6, +8, +10 | District 2 uses the word at +6 to select a bank. The Core uses bank 15 (`KOBJECTS.SPR`). Byte +8 selects the image and the signed word at +10 scales both dimensions in units of 1/64. |
 
 The loader inserts two runtime bytes after the first byte of each group 1
 record. Offsets in the runtime wall structure after that insertion exceed the
-corresponding disk offsets by two. Object fields and the remaining face
-attributes are still under analysis.
+corresponding disk offsets by two. The signed selector at disk +14 controls whether the
+wall consumes one material pair or one per horizontal section.
+
+#### Sky color and street lighting
+
+The Core gets its purple skyline from indexed color. The most frequent nonblack
+index in the visible 320×100 part of `KSKY.IMG` is **81**. Both the sky and
+floor IMG headers give it RGB **(35, 19, 43)**, which becomes **(8, 4, 10)**
+on the six-bit VGA DAC. Other indices supply the darker cloud and skyline tones.
+
+| DOS address | What happens to the color |
+| --- | --- |
+| `0x2B86D–0x2B896` | Read the district floor image and palette at `DS:12DC0`, then build the distance remaps. The Core’s black depth-shade target comes from `DATA1.DAT`. |
+| `0x2B581–0x2B5B1` | Select the district panorama, decode its palette into temporary stack storage, and convert its upper 100 pixel rows to VGA planes. |
+| `0x393CC` | A nonzero district flag selects the panorama copy loop at `0x394FD`. A zero flag selects a solid fill using the palette index stored at `DS:13953`. |
+| `0x10429–0x10435` | Fade in the gameplay DAC from `DS:12DC0`. This is the palette that gives the panorama indices their displayed colors. |
+
+Qwebgpu takes the hue of the most frequent visible nonblack sky color, or
+the fill color for a solid backdrop. Ambient lighting now uses 100% of this
+hue, up from a 50% mix with neutral light. Ambient intensity drops from
+0.48 to 0.28 in the shader’s approximate linear-light space. The panorama and
+dashboard still use the original display palette.
+
+| Core fixture | Source art | GPU lighting |
+| --- | --- | --- |
+| Streetlights | Images 0–10 in `KOBJECTS.SPR`. Each fixture samples a luminous texel in its own artwork. The forked lamp (image 5) samples palette index 36 at (8, 6). | A point light at the fixture head reaches 2.6 times its placed height. A separate additive halo has a bright center and soft edge. |
+| Overhead caution lights | The Core gantry spans use `KWALL6.SPR` images 10 and 11 and `KWALL7.SPR` image 0. Their red bulb arrays sit in masked 64×64 wall textures. | Each array takes its emitter color from its brightest red bulb. Wall endpoints, texture repeats, height and the active MAP variant place its point light and halo. |
+| Stop sign | Image 13. The electronic STOP lettering at (14, 32) uses palette index 27, pure red. | The panel casts a red pool reaching 1.7 times the sign’s height, with a smaller halo over the lettering. |
+
+The surface shader looks up emitters by MAP cell and applies distance falloff and
+surface angle. A second GPU draw projects one halo per visible fixture in world
+units and depth-tests it against the street and exterior cab. The cockpit draws
+last. Point lights currently have no shadow maps.
+
+#### Cab dimensions, cameras and wall contact
+
+| Component | Geometry and behavior |
+| --- | --- |
+| Cockpit | The driver sits inside a six-face cabin. The windshield and dashboard share the front face with the steering wheel and welcome lettering. `LDOOR35.IMG` covers the left door and its mirror covers the right. Transparent window texels reveal the street. Horizontal head movement stops at 90° on either side. |
+| Exterior model reference | The yellow box measures **220 long × 97 wide × 60 high** in world units. Its origin is the driver's XY position. Its base lies at driver Z + 20 and its roof at driver Z − 40. Positive Z points down. One MAP cell is 512 units wide. |
+| Sizing evidence | The retail cab artwork has a 136-pixel side silhouette, a 60-pixel end silhouette and a height of about 37 pixels. Scaling those proportions to put the horizontal corners at the DOS probe radius gives the dimensions above. The radius is measured in code. Treat the resulting box dimensions as a modeling estimate. |
+| Chase camera | F toggles between cockpit and chase. Chase has continuous horizontal orbit and retains its wheel zoom. The boom spans 108–350 world units, starting at 210, and shortens against walls. The height above the aim point passes through 40, 70 and 110 units at the former distance presets. |
+
+At `0x2620A`, SKIPIT forms five headings around the direction of travel in
+the order −25°, +25°, −13°, +13°, 0°. At `0x262D5` it multiplies the
+heading components by 120 and shifts by 11 to undo the sine table's scale.
+At `0x26392` it traces the displacement between old and new probe positions.
+The wall routine filters by height, checks whether the material accepts
+back-side contact (bit 1) and ignores crossings for non-solid materials (bit 3).
+Qwebgpu uses the five probes in forward and reverse and sweeps them across
+steering changes. Its wall response uses a continuous intersection fraction
+and a clearance margin. Full DOS damage and airborne contact remain open.
+[Recovered movement routine](disassembly/SKIPIT/src/functions/runtime/resolve_player_wall_contact.asm).
+
+#### The structure east of the New Game spawn
+
+At (137, 19), two cells east of the cab, `KCITY.MAP` contains `0x026E`.
+Block `0x6E`, variant 2, combines two horizontal polygons, four raised walls
+and eighteen static sprite placements. The walls have three 128-unit sections
+each. Their lower edges are at Z = −108 and their upper edges at Z = −236.
+The ground is at Z = 20. The BLK supplies the pieces below those walls.
+
+The adjacent cells at (137, 18) and (137, 20) both contain block `0x61`.
+Each has two 512-unit wall runs, one along local Y = 0 and one along Y = 512.
+Each run is eight 64-unit repeats between Z = −108 and Z = 20. Those side
+walls have records on disk. No such record seals the street under block
+`0x6E`. Filling that space with an opaque quad would close the entrance.
+
+| Feature seen from the cab | Retail evidence | Qwebgpu correction |
+| --- | --- | --- |
+| Supports beneath the upper walls | Four placements of image 40 and four of image 39 have base Z = 20 and scale 208. Image 40 is 5×41 disk pixels, giving it a world height of about 133 units. `0x40A77` passes its placement to `0x42730`. | The worker previously jumped past group 3. It now places bottom-anchored sprite quads from the object bank. Only nonzero texels write color and depth. |
+| Window panel orientation | Variant 2 uses bank 11, image 4 on all four walls. `0x3305C` changes SPR rows to columns, then `0x3C0BC` advances through whole columns as screen X increases. | The GPU samples the disk rows directly. Uploading transposed rows rotated the panels and also rotated holes in masked textures. |
+| Which wall spans can show through | `0x41FA5` and `0x4247C` consult flag bit 1 for the reverse side. The uniform path tests bit 0 for masking. The high-detail sectioned loop at `0x3C7EF` tests the whole flag byte. Both read materials from screen left to right. | Sectioned walls select the material for the viewed side before testing its transparency. An opaque column writes index zero as a color. A masked column skips a zero source texel before shading. |
+| Road surface | `0x44184` receives floor scale and orientation. The four jump-table entries at `0x44174` select quarter-turns. A scale of 1 doubles the repeat period to 128 world units. | The mesh uses the BLK rotation and scale for each polygon. |
+| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40EEE` skips block zero. | A render bundle follows that neighborhood as the camera crosses cell boundaries. Geometry beyond it no longer appears behind the entrance. |
+| Distance shading | The first RGB triple in `DATA1.DAT` specifies black. `0x34094` builds sixteen palette remaps. The 64 bytes at `DS:0x8C7A` select a remap by depth. | The shader looks up the street color after the mask test. The cab overlay keeps its display palette. |
+
+The port uses a GPU depth buffer. DOS interpolates shade values along projected spans and visits
+the block BSP in painter order. The browser samples depth per fragment and
+can choose a different palette entry for equally close colors. The screenshots
+show the earlier renderer. A visual comparison of this revision is pending.
 
 ### BSP
 

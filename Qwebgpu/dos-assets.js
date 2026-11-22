@@ -32,12 +32,23 @@ export function readPromptTables(bytes) {
   const start = base + 0x8b20 + district * 6;
   const newGame = {
     district, map: asset(0x66b0), blocks: asset(0xadac), floor: asset(0x6680), sky: asset(0x6698),
+    panorama: bytes[base+0x97aa+district] !== 0,
     wallBanks: Array.from({length: 16}, (_, i) => stringAt(0x64e8 + district * 64 + i * 4).toUpperCase()),
+    viewCells: Array.from({length:49}, (_, i) => [
+      view.getInt16(base+0xa9ba+4*i,true), view.getInt16(base+0xa9bc+4*i,true)]),
+    shadeWeights: Array.from({length:16}, (_, i) => view.getInt16(base+0x8c5a+2*i,true)),
+    depthBands: bytes.slice(base+0x8c7a,base+0x8c7a+64),
     x: view.getInt16(start, true) * 512 + 256, y: view.getInt16(start + 2, true) * 512 + 256,
     z: view.getInt16(start + 4, true), heading: view.getInt16(base + 0x8b74 + district * 2, true),
     welcome: [stringAt(0x9e28), stringAt(0x9e2c)],
     thrust: Array.from({length: 18}, (_, i) => view.getInt16(base + 0x52a8 + i * 2, true)),
     sine: Array.from({length: 1441}, (_, i) => view.getInt16(base + 0x71a8 + i * 2, true)),
+    mapDisplay: {
+      scaleX: view.getInt32(base + 0xc700, true), scaleY: view.getInt32(base + 0xc704, true),
+      divisorX: view.getInt32(base + 0xc708, true), divisorY: view.getInt32(base + 0xc70c, true),
+      offsetX: view.getInt16(base + 0xc710 + district * 4, true),
+      offsetY: view.getInt16(base + 0xc712 + district * 4, true),
+    },
   };
   return { lines, storyLines, newGame, widths: advances(0xaee8), slotWidths: advances(0xae70), menuY, step: view.getUint16(base + 0x8c56, true) };
 }

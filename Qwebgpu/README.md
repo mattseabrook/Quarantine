@@ -6,10 +6,11 @@ Serve this directory from the repository root.
 python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
 ```
 
-Open `http://127.0.0.1:8000/`, select your September 1994 retail MS-DOS game
-directory, and choose **Start**. On a fresh tab, `BQUAR1DK.AVI` plays
+Open `http://127.0.0.1:8000/`. By default, the game starts automatically and the server
+reads the September 1994 retail files from `Qwebgpu/MS-DOS`, a symlink to the
+repository's `MS-DOS` directory. On a fresh tab, `BQUAR1DK.AVI` plays
 before the startup screens. Use the manual to enter the three-digit
-response. Press a key or tap the animated title to reach the main menu. Use Up/Down
+response if copy protection is enabled. Press a key or tap the animated title to reach the main menu. Use Up/Down
 or W/S to select and Enter or Space to activate. The mouse highlights a row
 on hover and opens it on click. Load opens the five retail save
 slots. Enter selects a slot, Y/N answers the restore prompt, and Escape leaves
@@ -18,12 +19,42 @@ cab. A key or click dismisses the retail welcome text. Escape opens the
 menu and Resume returns to the cab. **Quit Game** plays `BQUAR2DK.AVI` and returns to the
 logo and title sequence. Space, Escape, or a click on the video skips it.
 Reloading the same tab retains the opening video's play state and a
-successful manual response. If an AVI is absent from the selected folder,
+successful manual response. If an AVI is absent from the game directory,
 startup or restart continues without that clip.
 
-The client reads the selected files through the browser's local file API.
-Python serves the engine files. The menus and intro use the original 320×200
+## Configuration
+
+The served [config.json](config.json) contains the default settings. Set
+`"copyProtection": true` and reload the page to enable the original manual
+challenge; it is disabled by default. When enabled, `COPY.IMG`, `COPYFONT.SPR`
+and `PW.ENC` are required in the selected game folder. This setting does not
+modify the DOS executable or its disassembly.
+
+Set `"fileUpload": true` and reload to show a **Select game folder** link.
+The served game still starts automatically; the link opens the optional
+folder picker and Start button. A selected folder replaces the served files
+for that session; choose **Use served files** to return. The upload option
+is disabled by default. Browsers may mute audio until the first
+key press or click; the opening video continues while audio is locked.
+
+The web server must follow the symlink and serve files from `MS-DOS`. Anyone
+who can reach the server can request files from that directory, including
+save files; bind it to a trusted interface or restrict access. With folder
+selection enabled, the browser reads the selected files through its local
+file API. The menus and intro use the original 320×200
 framebuffer with 4:3 display correction. Gameplay fills the browser viewport.
+
+### HD IMG replacements
+
+Place a PNG in `Qwebgpu/HD` using the exact stem of the original IMG.
+For example, `HD/KSKY.png` replaces `KSKY.IMG` in the Core when you start
+a New Game. Both `.png` and `.PNG` work. Reload the page after adding an
+image. The renderer uses the original IMG when a replacement is unavailable.
+
+Match the original framing. The sky uses the top half of its image, and
+cockpit and door PNGs use alpha for their windows. Screen overlays keep
+their original positions. Sprite banks and the floor texture atlas continue
+to use their retail assets.
 
 ### Driving and display controls
 
@@ -31,25 +62,49 @@ framebuffer with 4:3 display correction. Gameplay fills the browser viewport.
 | --- | --- |
 | W, S | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
 | A, D | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
-| F | Cycle cockpit → near chase → middle chase → far chase → cockpit. New Game starts in the cockpit. |
+| Mouse | Click the driving view to capture the pointer. Move horizontally to look up to 90° left or right in the cockpit, or orbit continuously in chase view. |
+| F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
+| Mouse wheel | Zoom continuously in chase view. Roll forward to move closer. The distance is remembered when switching views. |
+| M | Open the city map. Arrow keys move the map cursor; M or Escape returns to driving. |
+| C or ] | Advance CD music to the next track, wrapping to track 02. C matches the DOS next-track control. |
+| [ | Select the previous CD track. |
+| P | Pause or resume CD music. |
+| Tilde / backquote | Open or close the debugging console. Gameplay pauses and the cursor is visible while it is open. |
 | Minus, plus | Step the actual render resolution. Both the main keyboard and keypad work. The selected dimensions appear briefly. |
 | Escape | Open the options menu. Resume retains position, wheel angle, momentum, camera and resolution. |
 
 The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 1920×1080 and 2560×1440 when they fit the display. Gameplay defaults to the
 display's native pixel dimensions, subject to the device's texture limit.
-On a 16:9 window the camera fills a 16:9 frame. On other windows the vertical
-field adjusts to fill all four edges at the same 110° horizontal FOV. The
-cockpit artwork stays centered at its original 4:3 display proportions.
+On a 16:9 window the camera fills a 16:9 frame. Chase uses 110° horizontal FOV.
+The cockpit uses up to 90° and zooms uniformly as needed to keep the dashboard and doors filling the viewport vertically. The
+front artwork and mirrored door artwork meet at right angles inside the 3D cabin.
+
+Driving sound uses the installed `ENG7.VOC` loop and `IMPACT.VOC` sample.
+Engine pitch follows the SKIPIT playback step in both directions. The
+head-on wall response requests the impact cue at `0x26489`.
+
+The map uses the original four `KEMOMAP*.ZZZ` images and executable
+coordinate conversion. The player and cursor are provisional cross markers;
+the original icons and Wayfinder destination behavior are not yet implemented.
 
 Gameplay targets **60 presentations per second** with one full-detail path.
 Three workers prepare the map and lookup tables, world geometry and materials,
 and cockpit art concurrently. The GPU clips, projects, textures and
-depth-tests the world, draws repeated blocks as instances, and composites the
-cockpit or exterior sprite. A render bundle retains the street draw commands
-while the camera stays within one map cell. A separate 35 Hz fixed step runs
+depth-tests the world, draws repeated blocks as instances, applies the district
+wall material's backface, transparency and collision flags, and draws the
+textured cabin or the yellow 220 × 97 × 60 world-unit exterior box. A render bundle retains the street geometry in the 49-cell neighborhood read from SKIPIT. Crossing a cell boundary refreshes the bundle. A separate 35 Hz fixed step runs
 the keyboard driving equations. DOS used a measured frame-rate divisor there.
 The intro and wrapper videos retain their own media clocks.
+
+The console shows the current position, MAP word and block variant, camera,
+render size and district draw counts. `map` prints nearby cells; `walls` lists
+the current block's wall endpoints, material flags, texture availability and
+facing. `walls dx dy` inspects a neighboring cell. `floors [dx dy]` reports
+floor vertices, material, texture parameters and visible side. `report` prints the current
+state, map, walls and floors together; `copy` copies that report and the console log
+when clipboard access is available. `help` lists commands, and Escape closes
+the console without opening the game menu.
 
 To test from another computer, use HTTPS or forward the loopback server over
 SSH. Run this command on the client with your Arch username and host address,
@@ -63,7 +118,7 @@ ssh -N -L 8000:127.0.0.1:8000 user@arch-host
 
 | DOS entry | Browser implementation |
 |---|---|
-| `0x47C44` | Reads the prompt strings and character widths from the player's executable, chooses a record in `PW.ENC`, and draws the three-attempt challenge using `COPY.IMG` and the planar glyphs in `COPYFONT.SPR`. |
+| `0x47C44` | When enabled in the config, reads the prompt strings and character widths from the player's executable, chooses a record in `PW.ENC`, and draws the three-attempt challenge using `COPY.IMG` and the planar glyphs in `COPYFONT.SPR`. |
 | `0x2AFF4` | Shows `GAMETEK.IMG` and plays `EXPLO1.VOC`. |
 | `0x2B084` | Shows `IEGLOW.IMG` and plays `HYPNO.VOC`. |
 | `0x2B0FC` | Plays `TITLE.FLI` up to four times, starts `QTITLE.VOC` once, and polls for input. |
@@ -96,13 +151,27 @@ foreach ($track in 2..12) { $n = '{0:D2}' -f $track; ffmpeg -hide_banner -loglev
 Track 01 holds PlayStation data. Each of tracks 02 through 12 is stereo
 16-bit little-endian PCM at 44,100 Hz with INDEX 01 at 00:02:00 in its own
 file. The command preserves every sample, including the pregap, and keeps
-existing FLACs. Select the game folder after adding the tracks. The browser
+existing FLACs. The browser
 uses its native FLAC decoder and starts track02.flac at two seconds during
 INTRO.FLI. Audio continues through the crawl and stops on return to the title.
+Driving starts at track 02 and plays through track 12; selecting a track skips
+its two-second pregap. The selected track is retained when returning from the
+menu, but restarts on resume. The browser-specific previous-track and pause
+controls supplement the DOS C key. Missing tracks or playback errors appear
+briefly in the game and in both the game and browser developer consoles.
+
+The street renderer uses row-major retail wall art, per-face floor scale and
+rotation, and the placed sprites in the fourth BLK group. The eighteen
+placements on block 0x6E include the supports beneath the windows east of
+the spawn. GPU distance shading uses the district RGB target and the
+executable's 64 depth bands. DOS BSP draw ordering, animated materials and
+pixel-level parity remain open. [Spawn geometry trace](../README.md#the-structure-east-of-the-new-game-spawn).
+
+The darker street uses the full district sky tint. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The GPU draws world-space halos over both types of fixture. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
 
 ## AVI playback
 
-A module worker reads the selected AVI directly, parses the RIFF stream
+A module worker reads the game AVI, parses the RIFF stream
 lists and `movi` records, and decodes the retail 320×184 TrueMotion RGB555
 keyframes. Playback reuses one transferable frame buffer. WebGPU expands
 the packed RGB555 into RGB, and the Web Audio clock keeps the picture in
@@ -137,7 +206,7 @@ upload from the decoder's linear index array. For game screens the same
 shader addresses four VGA planes. Palette fades reuse the index texture.
 The browser port runs as local JavaScript modules and requires no build step.
 
-The player types into the game screen. Enter submits, Backspace moves left,
+When the manual challenge is enabled, the player types into the game screen. Enter submits, Backspace moves left,
 and another digit at the final position overwrites it. Touching the screen
 requests the mobile keyboard. The prompt, advances, bitmap font, key-click
 sample and result messages come from the selected installation.
