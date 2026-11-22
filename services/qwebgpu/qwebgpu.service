@@ -1,0 +1,15 @@
+[Unit]
+Description=Qwebgpu LAN server and browser live reload
+
+[Service]
+Type=exec
+ExecStart=/opt/repos/Quarantine/services/qwebgpu/serve.sh
+Restart=on-failure
+RestartSec=3
+StateDirectory=qwebgpu
+RuntimeDirectory=qwebgpu
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

@@ -1,10 +1,9 @@
-; Analyzer entry: 00036060
-; Analyzer symbol: FUN_00036060
-; Boundary and name are provisional until independently verified.
+; reset_wall_animation_sequences — runtime entry 0x36060.
+; Initializes 30 sequence slots with bank 99 and marks their frame indices inactive before loading ANIM.
 
-%macro emit_function_00036060_part_00 0
+%macro emit_reset_wall_animation_sequences_part_00 0
     %%fragment_start:
-function_00036060:
+reset_wall_animation_sequences:
     %%insn_00036060_36060:
     push ebx ; 00036060 53
     %if ($ - %%insn_00036060_36060) > 1

@@ -1,10 +1,9 @@
-; Analyzer entry: 0003f008
-; Analyzer symbol: FUN_0003f008
-; Boundary and name are provisional until independently verified.
+; write_bsp_int32_be — runtime entry 0x3F008.
+; Emits the split coordinate or normal component to the BSP stream, most significant byte first.
 
-%macro emit_function_0003f008_part_00 0
+%macro emit_write_bsp_int32_be_part_00 0
     %%fragment_start:
-function_0003f008:
+write_bsp_int32_be:
     %%insn_0003f008_3F008:
     push ebx ; 0003F008 53
     %if ($ - %%insn_0003f008_3F008) > 1

@@ -1,10 +1,9 @@
-; Analyzer entry: 00023361
-; Analyzer symbol: FUN_00023361
-; Boundary and name are provisional until independently verified.
+; blit_transparent_map_sprite — runtime entry 0x23361.
+; Copies the four sprite planes to the wide map page, preserving destination pixels for source index zero.
 
-%macro emit_function_00023361_part_00 0
+%macro emit_blit_transparent_map_sprite_part_00 0
     %%fragment_start:
-function_00023361:
+blit_transparent_map_sprite:
     %%insn_00023361_23361:
     push ebp ; 00023361 55
     %if ($ - %%insn_00023361_23361) > 1

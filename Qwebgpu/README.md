@@ -1,14 +1,16 @@
 # Qwebgpu
 
-Serve this directory from the repository root.
+Open [plague.local:8443](https://plague.local:8443/) to play on the LAN. The Arch service reloads open tabs after edits. [Service setup](../README.md#running-qwebgpu).
+
+For a separate loopback-only session, stop the service first or choose a different port.
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
 ```
 
-Open `http://127.0.0.1:8000/` to start Qwebgpu. If the browser blocks autoplay
-with sound, a click or key press on the game lets the intro play from its
-first frame with audio. The server reads the
+For the loopback command above, open `http://127.0.0.1:8000/`. If the browser
+blocks autoplay with sound, click the opening frame or press a key to start the
+clip with its soundtrack. The server reads the
 September 1994 retail files from `Qwebgpu/MS-DOS`, a symlink to the
 repository's `MS-DOS` directory. On a fresh tab, `BQUAR1DK.AVI` plays
 before the startup screens. Use the manual to enter the three-digit
@@ -61,7 +63,9 @@ to use their retail assets.
 The renderer recognizes a nearly uniform color across the top of an HD sky
 PNG. It keys out pixels of that color, including small variations in the Core's
 purple fill, to reveal a star cubemap and moving volumetric clouds. The
-black buildings retain the panorama's original projection and parallax. The
+black buildings wrap around the horizon. Each viewing ray selects a bearing
+and elevation in the silhouette, keeping each rooftop at a fixed angle as the
+camera turns or pitches. Both the retail IMG and the HD PNG use this mapping. The
 key color tints the stars, atmosphere, clouds, and ambient lighting on city
 surfaces. Districts without a keyed PNG take their tint from the retail palette.
 
@@ -78,47 +82,73 @@ cloud highlights remain visible overhead as the sky darkens.
 
 | Input | Behavior |
 | --- | --- |
-| W, S | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
-| A, D | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
-| Mouse | Click the driving view to capture the pointer. In the cockpit, look up to 100° left or right. In chase view, move horizontally to orbit and vertically to look up or down. |
+| W, S or Up, Down | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
+| A, D or Left, Right | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
+| Mouse | Click the driving view to capture the pointer. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally to orbit and vertically to look up or down. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
+| V | Toggle the two white headlights. New Game starts with them on. |
 | Mouse wheel | Zoom continuously in chase view. Roll forward to move closer. The distance is remembered when switching views. |
-| M | Open the city map. Arrow keys move the map cursor; M or Escape returns to driving. |
+| M | Open the city map. Arrow keys select a bay in that direction. M or Escape returns to driving. |
 | C or ] | Advance CD music to the next track, wrapping to track 02. C matches the DOS next-track control. |
 | [ | Select the previous CD track. |
 | P | Pause or resume CD music. |
-| Tilde / backquote | Open or close the debugging console. Gameplay pauses and the cursor is visible while it is open. |
+| Tilde / backquote | Open Settings from the main menu or while driving. Tilde, Escape or Close returns to the game. |
 | Minus, plus | Step the actual render resolution. Both the main keyboard and keypad work. The selected dimensions appear briefly. |
 | Escape | Open the options menu. Resume retains position, wheel angle, momentum, camera and resolution. |
 
 The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 1920×1080 and 2560×1440 when they fit the display. Gameplay defaults to the
 display's native pixel dimensions, subject to the device's texture limit.
-On a 16:9 window the camera fills a 16:9 frame. Chase uses 110° horizontal FOV.
-The cockpit pulls back more when facing the windshield and slightly when facing
-either door. The front artwork and mirrored door artwork meet at right angles
-inside the 3D cabin.
+Open Settings with tilde to set horizontal FOV from 60° to 120° in one-degree
+steps. The default is 110° in cockpit and chase. The zoom wheel controls the
+chase boom independently. It shortens when it crosses a wall or deck.
+
+The cockpit pivots above and behind the GLB's steering wheel. The renderer
+uniformly fits the lowest tyre and the modeled eye to SKIPIT's 20-unit
+road-to-eye distance. This makes the taxi about 27 world units high. The Core's
+57.75- and 77-unit stop signs use their original placement scales. Chase orbits
+the fitted model's vertical center. Driving uses SKIPIT's separate 120-unit wall probes.
+The two white beams originate at the front faces of the GLB headlamp lenses and
+follow the cab heading in either view. They illuminate indexed roads, walls and
+placed sprites. The lenses and their depth-tested halos are visible from the front.
+Beam range is 850 world units. The lighting model has no headlight shadow map.
+
+The taxi uses all 148 meshes and 28 embedded images at their supplied resolution,
+including the 2048-pixel maps. Materials use their base color, metallic, roughness
+and normal inputs. Window glass blends over the interior and street. The renderer
+generates mipmaps for distant views and uses anisotropic filtering.
+
+The model is *FREE 1950s American Taxi (based on Checker)* by Libau Media. The
+port applies placement and uniform scale at load time. [Original model](https://sketchfab.com/3d-models/free-1950s-american-taxi-based-on-checker-d1b10defaed94a1094419e84ca9b0bf1) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 Driving sound uses the installed `ENG7.VOC` loop and `IMPACT.VOC` sample.
 Engine pitch follows the SKIPIT playback step in both directions. The
 head-on wall response requests the impact cue at `0x26489`.
 
-The map uses the original four `KEMOMAP*.ZZZ` images and executable
-coordinate conversion. The player and cursor are provisional cross markers;
-the original icons and Wayfinder destination behavior are not yet implemented.
+The city map assembles the four `KEMOMAP*.ZZZ` images and stamps the district's
+`BAYn.DAT` locations using `MAPICONS.SPR`. The cab marker follows the heading
+table in SKIPIT. Arrow keys select the nearest eligible bay within the chosen
+90° sector, and the map scrolls toward it. The selected bay persists when the
+map is reopened during the drive. Cockpit Wayfinder guidance remains open.
 
 Gameplay targets **60 presentations per second** with one full-detail path.
 Three workers prepare the map and lookup tables, world geometry and materials,
 and cockpit art concurrently. The GPU clips, projects, textures and
 depth-tests the world, draws repeated blocks as instances, applies the district
 wall material's backface, transparency and collision flags, and draws the
-textured cabin or the yellow 220 × 97 × 60 world-unit exterior box. Render
-bundles cover the full district and skip chunks outside the camera's view.
-Distance fog uses the district hue and fades to black at long range. A separate 35 Hz fixed step runs
+taxi from `HD/cars/taxi/taxi.glb`. Installations without the GLB use the retail-art cabin and exterior box. The street and its fixture halos use SKIPIT's 49-cell neighborhood around the
+camera. The GPU clips geometry to the selected view and shades it with the
+district palette. A separate 35 Hz fixed step runs
 the keyboard driving equations. DOS used a measured frame-rate divisor there.
 The intro and wrapper videos retain their own media clocks.
 
-The console shows the current position, MAP word and block variant, camera,
+Settings saves horizontal FOV, vertical mouse inversion and separate Sound FX and CD audio
+volumes in this browser. Both volumes start at 100%. Sound FX includes the
+engine, impacts, menu sounds, voices and AVI audio. CD audio controls the
+driving tracks and intro CD music. Changing the Sound FX slider plays the menu
+click as a preview. Driving pauses while Settings is open.
+
+Expand **Developer console** in driving Settings to see the current position, MAP word and block variant, camera,
 render size and district draw counts. `map` prints nearby cells; `walls` lists
 the current block's wall endpoints, material flags, texture availability and
 facing. `walls dx dy` inspects a neighboring cell. `floors [dx dy]` reports
@@ -182,11 +212,15 @@ controls supplement the DOS C key. Missing tracks or playback errors appear
 briefly in the game and in both the game and browser developer consoles.
 
 The street renderer uses row-major retail wall art, per-face floor scale and
-rotation, and the placed sprites in the fourth BLK group. The eighteen
-placements on block 0x6E include the supports beneath the windows east of
-the spawn. GPU distance shading uses the district RGB target and the
-executable's 64 depth bands. For wall sections that overlap on the same plane,
-a small depth adjustment gives the smaller panel priority. DOS BSP draw ordering, animated materials and
+rotation, and the placed sprites in the fourth BLK group. MAP IDs resolve through SKIPIT's descriptor table. Two cells east of spawn,
+MAP ID 0x6E selects BLK record 0x6D, which has eight floors, sixteen wall runs
+and ten sprite placements. GPU distance shading uses the district RGB target and the
+executable's 64 depth bands. For coplanar surfaces within a block, the renderer reads the retail BSP
+and uses the camera's position relative to each split plane to break depth ties.
+Overlapping walls in adjacent cells still use the panel-area rule. Animated
+materials use the active bank, image and masking flags from the district ANIM
+sequences. Wall contact spans a complete BLK run. The cab follows supporting
+floors using a center probe and four corner probes. Full airborne motion and
 pixel-level parity remain open. [Spawn geometry trace](../README.md#the-structure-east-of-the-new-game-spawn).
 
 The darker street uses the full district sky tint. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The GPU draws world-space halos over both types of fixture. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).

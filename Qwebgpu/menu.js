@@ -6,6 +6,7 @@ import {createConsole} from './console.js';
 import {loadDrivingSounds,createDrivingAudio} from './driving-audio.js';
 import {createDrivingDisc} from './cd-audio.js';
 import {loadMap, createMapView} from './map-view.js';
+import {settings, settingsPanel, openSettings} from './settings.js';
 
 const coldRows = [0, 2, 4];
 const labels = ['New Game', 'Resume', 'Load', 'Save', 'Quit Game'];
@@ -28,7 +29,7 @@ function readKey(screen, {pointerKey, pointerHover, buttons, activationEvent = '
       if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.key === 'Tab' || (buttons?.contains(event.target) && ['Enter', ' '].includes(event.key))) return;
       event.preventDefault();
-      finish(event.key);
+      finish(event.code === 'Backquote' ? 'Backquote' : event.key);
     }, options);
     function pointerPosition(event) {
       const rect = screen.getBoundingClientRect();
@@ -125,11 +126,16 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, a
     let message = 'Saved-game restoration stops here.';
     if (!restoring) {
       try {
-        const [district,pipelines,sounds] = await Promise.all([
-          readDistrict(getFile,tables.newGame), prepareCabPipelines(display), loadDrivingSounds(audio,getFile),
+        const prepared = prepareCabPipelines(display);
+        const [district,pipelines,sounds,taxi] = await Promise.all([
+          readDistrict(getFile,tables.newGame), prepared, loadDrivingSounds(audio,getFile),
+          Promise.all([prepared,import('./taxi-model.js')]).then(([p,{loadTaxi}]) =>
+            loadTaxi(display.device,p.taxi.materialLayout)),
         ]);
+        district.taxiEye = taxi?.eye;
+        district.taxiCenterZ = taxi?.centerZ;
         await vga.fade(image.dac, false);
-        return {district, pipelines, sounds, car: newDriver(district), welcome: true, resolution: Infinity};
+        return {district, pipelines, sounds, taxi, car: newDriver(district), welcome: true, resolution: Infinity};
       } catch (error) {
         message = error.message;
       }
@@ -144,7 +150,7 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, a
   await vga.fade(image.dac, false);
 }
 
-async function enterCab({display, screen, getAudioTrack, bytes, audio}, session) {
+async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, session) {
   const {car, district} = session;
   const lastTick = {...car}, visibleCar = {...car};
   const events = new AbortController(), options = {signal: events.signal};
@@ -177,19 +183,19 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
   }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. Click to capture the mouse. Look left and right in the cockpit or in any direction in chase. M opens the map. F switches views. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens the debugging console. Minus and plus change resolution. Escape opens the menu.');
+      'W and S drive, A and D steer. Click to capture the mouse and look around. M opens the map. F switches views. V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape opens the menu.');
   }
   function dismiss() { session.welcome = false; describe(); }
   async function openMap() {
     mapLoading = true;
     release();
     try {
-      session.map ??= await loadMap(bytes);
+      session.map ??= await loadMap(bytes,district.start.district,district.start.mapDisplay);
       if (leaving || events.signal.aborted) return;
       mapView = createMapView(display,session.map,car,district.start.mapDisplay);
       screen.width = 320; screen.height = 200;
       screen.classList.remove('driving','hide-cursor');
-      screen.setAttribute('aria-label','City map. Arrow keys move the map cursor. M or Escape returns to driving.');
+      screen.setAttribute('aria-label','City map. Arrow keys select a waypoint. M or Escape returns to driving.');
     } catch (error) {
       console.error('Unable to open map:', error);
       report('Map: ' + error.message);
@@ -219,19 +225,14 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
       if (e.code === 'Backquote') {
         e.preventDefault();
         if (e.repeat) return;
-        if (debugConsole.isOpen()) debugConsole.close();
-        else debugConsole.open();
-        screen.classList.toggle('hide-cursor', !debugConsole.isOpen());
         release();
-        return;
-      }
-      if (debugConsole.isOpen()) {
-        if (e.code === 'Escape') {
-          e.preventDefault();
-          debugConsole.close();
-          screen.classList.add('hide-cursor');
+        screen.classList.remove('hide-cursor');
+        openSettings(click).then(() => {
+          if (events.signal.aborted) return;
+          screen.classList.toggle('hide-cursor', !mapView);
           release();
-        }
+          screen.focus();
+        });
         return;
       }
       e.preventDefault();
@@ -253,6 +254,10 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
         if (car.camera) captureMouse();
       }
       else if (e.code === 'KeyM') openMap();
+      else if (e.code === 'KeyV') {
+        car.headlights = !car.headlights;
+        report(car.headlights ? 'Headlights on' : 'Headlights off');
+      }
       else if (e.code === 'KeyC' || e.code === 'BracketRight') disc.change(1);
       else if (e.code === 'BracketLeft') disc.change(-1);
       else if (e.code === 'KeyP') disc.toggle();
@@ -262,7 +267,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
     }, options);
     document.addEventListener('keyup', e => held.delete(e.code), options);
     function drivingInput() {
-      return !mapView && !mapLoading && !leaving && !debugConsole.isOpen() && document.hasFocus();
+      return !mapView && !mapLoading && !leaving && !settingsPanel.open && document.hasFocus();
     }
     document.addEventListener('pointerlockchange', () => {
       const captured = document.pointerLockElement === screen;
@@ -298,7 +303,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
     }, {...options,passive:false});
     document.addEventListener('mousemove', e => {
       if (!session.welcome && drivingInput() && (document.pointerLockElement === screen || e.target === screen)) {
-        turnView(car,e.movementX,e.movementY);
+        turnView(car,e.movementX,settings.invertY ? -e.movementY : e.movementY);
         if (car.camera && !document.pointerLockElement) {
           const bounds = screen.getBoundingClientRect();
           edgeTurn = e.clientX <= bounds.left+3 ? -1 : e.clientX >= bounds.right-3 ? 1 : 0;
@@ -331,6 +336,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
               if (driveTick(car,district,held)) effects.contact();
+              view.tickMaterials();
               accumulator -= dt;
             }
           }
@@ -338,11 +344,14 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
           const alpha = accumulator/dt;
           visibleCar.x = lastTick.x + (car.x-lastTick.x)*alpha;
           visibleCar.y = lastTick.y + (car.y-lastTick.y)*alpha;
+          visibleCar.z = lastTick.z + (car.z-lastTick.z)*alpha;
           const rotation = (car.angle-lastTick.angle+8640)%5760-2880;
           visibleCar.angle = lastTick.angle + rotation*alpha;
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
+          visibleCar.headlights = car.headlights;
           visibleCar.lookYaw = car.lookYaw;
+          visibleCar.lookPitch = car.lookPitch;
           visibleCar.orbitYaw = car.orbitYaw;
           visibleCar.chasePitch = car.chasePitch;
           visibleCar.chaseDistance = car.chaseDistance;
@@ -358,6 +367,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio}, session)
   } finally {
     releaseMouse();
     events.abort();
+    if (settingsPanel.open) settingsPanel.close();
     effects?.close();
     if (disc) { session.cdTrack = disc.currentTrack(); disc.close(); }
     clearTimeout(hideStatus);
@@ -381,7 +391,7 @@ export async function runMainMenu(game) {
   function draw() {
     vga.setImage(image);
     vga.sprite(choices[selected], menuX, tables.menuY[selected], true);
-    screen.setAttribute('aria-label', 'Main menu. ' + labels[selected] + '. Up, Down, W or S to move. Enter to select.');
+    screen.setAttribute('aria-label', 'Main menu. ' + labels[selected] + '. Up, Down, W or S to move. Enter to select. Tilde opens settings.');
     vga.present();
   }
   function rowAt({x, y}) {
@@ -404,6 +414,12 @@ export async function runMainMenu(game) {
     await vga.fade(image.dac, true);
     for (;;) {
       const key = await input;
+      if (key === 'Backquote') {
+        await openSettings(click);
+        screen.focus();
+        input = nextInput();
+        continue;
+      }
       if (typeof key === 'number') { select(key); break; }
       if (key === 'Enter' || key === ' ') break;
       const direction = key.toLowerCase();

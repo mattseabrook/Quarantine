@@ -34,8 +34,8 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
 // their typed arrays avoids copying the geometry and indexed texture atlas.
 export async function readDistrict(getFile, start) {
   const jobs = [
-    ['geometry',[start.map,start.blocks,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
-      'DATA'+start.district+'.DAT',...start.wallBanks]],
+    ['geometry',[start.map,start.blocks,start.bsp,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
+      'DATA'+start.district+'.DAT','ANIM'+start.district+'.DAT',...start.wallBanks]],
     ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT']],
     ['cockpit',['CAB.IMG','LDOOR35.IMG','WHEELSPR.SPR','FONT.SPR']],
   ];
@@ -43,7 +43,7 @@ export async function readDistrict(getFile, start) {
   try {
     const names = [...new Set(jobs.flatMap(([,names]) => names))];
     const [entries, hdSky, hdCab, hdDoor, starCubemap] = await Promise.all([
-      Promise.all(names.map(async name => [name,await getFile(name)])),
+      Promise.all(names.map(async name => [name,await getFile(name,name === start.bsp)])),
       loadHDImage(start.sky), loadHDImage('CAB.IMG'), loadHDImage('LDOOR35.IMG'),
       loadStarCubemap(),
     ]);

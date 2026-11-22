@@ -1,10 +1,9 @@
-; Analyzer entry: 00023552
-; Analyzer symbol: FUN_00023552
-; Boundary and name are provisional until independently verified.
+; blit_opaque_map_sprite — runtime entry 0x23552.
+; Copies all sprite indices into the wide map page. Used to stamp the district bay symbols.
 
-%macro emit_function_00023552_part_00 0
+%macro emit_blit_opaque_map_sprite_part_00 0
     %%fragment_start:
-function_00023552:
+blit_opaque_map_sprite:
     %%insn_00023552_23552:
     push ebp ; 00023552 55
     %if ($ - %%insn_00023552_23552) > 1

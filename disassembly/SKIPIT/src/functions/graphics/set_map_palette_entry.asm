@@ -1,10 +1,9 @@
-; Analyzer entry: 000354f8
-; Analyzer symbol: FUN_000354f8
-; Boundary and name are provisional until independently verified.
+; set_map_palette_entry — runtime entry 0x354F8.
+; Stores the three supplied components at three times the supplied index in the palette at DS:12AC0.
 
-%macro emit_function_000354f8_part_00 0
+%macro emit_set_map_palette_entry_part_00 0
     %%fragment_start:
-function_000354f8:
+set_map_palette_entry:
     %%insn_000354f8_354F8:
     push ebp ; 000354F8 55
     %if ($ - %%insn_000354f8_354F8) > 1

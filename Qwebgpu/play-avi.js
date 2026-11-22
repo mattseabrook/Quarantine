@@ -1,6 +1,8 @@
+import {effectsOutput} from './settings.js';
+
 // The worker reads the local RIFF file and decodes directly into a reusable
 // RGB555 buffer. Web Audio is the playback clock for both streams.
-export async function playAvi(file, audio, screen, presentFrame) {
+export async function playAvi(file, audio, screen, presentFrame, waitForAudio, unlockedBy) {
   const worker = new Worker(new URL('./avi-worker.js', import.meta.url), {type: 'module'});
   const controls = new AbortController();
   let animationFrame, source, started = false;
@@ -20,24 +22,24 @@ export async function playAvi(file, audio, screen, presentFrame) {
     for (let i = 0; i < samples.length; i++) samples[i] = (pcm[i] - 128) / 128;
     source = audio.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audio.destination);
+    source.connect(effectsOutput(audio));
 
     let pixels = movie.pixels;
     let current = 0;
     const duration = Math.max(frameCount * secondsPerFrame, audioBuffer.duration);
+    presentFrame(pixels);
+    await waitForAudio();
     const startedAt = audio.currentTime;
     source.start(startedAt);
     started = true;
-    presentFrame(pixels);
 
     await new Promise((resolve, reject) => {
       const options = {signal: controls.signal};
-      // While autoplay is blocked, the first interaction unlocks playback at frame zero.
-      const skip = () => { if (audio.currentTime > startedAt) resolve(); };
+      const skip = event => { if (!unlockedBy(event)) resolve(); };
       document.addEventListener('keydown', event => {
         if (event.key !== ' ' && event.key !== 'Escape') return;
         event.preventDefault();
-        if (!event.repeat) skip();
+        if (!event.repeat) skip(event);
       }, options);
       screen.addEventListener('click', skip, options);
 

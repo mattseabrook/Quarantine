@@ -1,10 +1,9 @@
-; Analyzer entry: 00051a70
-; Analyzer symbol: FUN_00051a70
-; Boundary and name are provisional until independently verified.
+; load_and_draw_map_bays — runtime entry 0x51A70.
+; Loads district bay records and stamps their type-specific icons into the wide map page.
 
-%macro emit_function_00051a70_part_00 0
+%macro emit_load_and_draw_map_bays_part_00 0
     %%fragment_start:
-function_00051a70:
+load_and_draw_map_bays:
     %%insn_00051a70_51A70:
     push ebx ; 00051A70 53
     %if ($ - %%insn_00051a70_51A70) > 1

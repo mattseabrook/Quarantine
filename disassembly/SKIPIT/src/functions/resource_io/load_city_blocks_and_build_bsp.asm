@@ -2,6 +2,9 @@
 ; Semantic name: load_city_blocks_and_build_bsp (verified)
 ; Evidence: Selects the district BLK and BSP paths, reads version 1 and the four per-slot counts, loads the grouped payloads, and builds BSP nodes from the expanded block geometry.
 
+; Directory entry i fills DS:27270 + 40*i (0x42A04–0x42A45). MAP ids refer
+; to these descriptors through DS:ABA8, whose first entry is null.
+
 %macro emit_load_city_blocks_and_build_bsp_part_00 0
     %%fragment_start:
 load_city_blocks_and_build_bsp:

@@ -1,4 +1,5 @@
 import {readVoice} from './dos-assets.js';
+import {effectsOutput} from './settings.js';
 
 export async function loadDrivingSounds(context,getFile) {
   async function load(name) {
@@ -17,7 +18,7 @@ export async function loadDrivingSounds(context,getFile) {
 export function createDrivingAudio(context,sounds) {
   const output = context.createGain();
   output.gain.value = 0;
-  output.connect(context.destination);
+  output.connect(effectsOutput(context));
   let active = false, closed = false, motor, motorGain;
   let lastSpeed = -1;
   const impacts = new Set();

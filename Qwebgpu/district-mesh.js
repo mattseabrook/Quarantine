@@ -66,7 +66,7 @@ export function wallDepthLayers(blocks, {tiles,width}, flags) {
     const variant = (tile>>>8)&3;
     const x = (cell%width)*512, y = Math.floor(cell/width)*512;
     block.faces.forEach((face, index) => {
-      if (face.floor || face.material >= block.variantStride) return;
+      if (face.floor || face.material >= block.variantStride || block.surfaceNodes?.[face.surface] < 0) return;
       const [a,b,c] = face.vertices;
       const dx = b[0]-a[0], dy = b[1]-a[1];
       const direction = dx < 0 || (dx === 0 && dy < 0) ? -1 : 1;
@@ -93,6 +93,7 @@ export function wallDepthLayers(blocks, {tiles,width}, flags) {
     walls.forEach((a,i) => {
       for (let j = i+1; j < walls.length && walls[j].start < a.end; j++) {
         const b = walls[j];
+        if (a.cell === b.cell && blocks[tiles[a.cell]&127].surfaceNodes) continue;
         if (a.top >= b.bottom || b.top >= a.bottom) continue;
         if (a.direction !== b.direction && !a.twoSided && !b.twoSided) continue;
         if (order(a,b) < 0) b.behind.push(a);
@@ -152,6 +153,22 @@ export function districtMesh(district) {
   }
   const floorMap = pack({width: 320, height: 200, pixels: linearPixels(district.floor.planes)});
   const banks = district.banks.map(bank => bank.map(pack));
+  // 0x2BFDB numbers flagged materials in bank/image order. ANIM rows use that ordinal.
+  const animationSlots = new Map();
+  const animations = [];
+  let ordinal = 0;
+  district.flags.forEach((bits, key) => {
+    if (!(bits & 4)) return;
+    const sequence = district.animations[ordinal++];
+    if (!sequence?.frames.length) return;
+    const frames = sequence.frames.map(([bank,image]) => {
+      const rect = banks[bank]?.[image];
+      if (!rect) throw new Error('Missing animated wall image '+bank+':'+image);
+      return [...rect,district.flags[bank*14+image],0,0,0];
+    });
+    animationSlots.set(key,animations.length);
+    animations.push({mask:sequence.mask,frames});
+  });
   const panels = district.banks.map((bank,k) => bank.map((sprite,i) =>
     cautionPanels(district.bankNames[k],i,sprite,district.floor.dac)));
   const skyPixels = linearPixels(district.sky.planes);
@@ -163,7 +180,7 @@ export function districtMesh(district) {
       atlas.set(sprite.pixels.subarray(row*sprite.width,(row+1)*sprite.width), (rect[1]+row)*1024+rect[0]);
     }
   }
-  const vertices = [], ranges = [], blockLights = [];
+  const vertices = [], surfaceNodes = [], ranges = [], blockLights = [];
   for (const block of district.blocks) {
     for (let variant = 0; variant < 4; variant++) {
       const lights = [];
@@ -171,6 +188,8 @@ export function districtMesh(district) {
       const first = vertices.length/12;
       for (const [faceIndex,face] of block.faces.entries()) {
         if (face.vertices.length < 3 || face.material >= block.variantStride) continue;
+        const node = block.surfaceNodes?.[face.surface] ?? 0;
+        if (node < 0) continue;
         const [a,b,c] = face.vertices;
         if (face.floor) {
           const tile = block.materials[2*(variant*block.variantStride+face.material)+1];
@@ -185,6 +204,7 @@ export function districtMesh(district) {
               const u = [vx,vy,-vx,-vy][face.textureOrientation];
               const v = [vy,-vx,-vy,vx][face.textureOrientation];
               vertices.push(vx,vy,vz,u/period,v/period,...rect,0,0,side > 0 ? -2 : -3);
+              surfaceNodes.push(node);
             }
           }
           continue;
@@ -197,7 +217,8 @@ export function districtMesh(district) {
           const material = side ? face.material : face.frontMaterial;
           const at = 2*(variant*block.variantStride+material);
           const bank = block.materials[at], image = block.materials[at+1];
-          const rect = banks[bank]?.[image];
+          const slot = animationSlots.get(bank*14+image);
+          const rect = slot === undefined ? banks[bank]?.[image] : [-1-slot,0,0,0];
           if (!rect) continue;
           const flags = wallFlags(block,variant,material,district.flags);
           const masked = face.sectioned ? Number(flags !== 0) : flags & 1;
@@ -206,7 +227,7 @@ export function districtMesh(district) {
           const bulbs = panels[bank][image];
           const frontAt = 2*(variant*block.variantStride+face.frontMaterial);
           const sameArt = block.materials[frontAt] === bank && block.materials[frontAt+1] === image;
-          const reverseUV = side && !(bulbs.length && sameArt);
+          const reverseUV = Boolean(side);
           if (!side || !sameArt) {
             for (let repeat=0; repeat<face.repeats; repeat++) {
               for (const {u,v,color} of bulbs) {
@@ -217,12 +238,13 @@ export function districtMesh(district) {
               }
             }
           }
-          const flagsAndFace = masked|both|(side*4)|(bulbs.length ? 16 : 0)|(faceIndex<<5);
+          const flagsAndFace = masked|both|(side*4)|(face.sectioned ? 8 : 0)|(bulbs.length ? 16 : 0)|(faceIndex<<5);
           for (const j of [0,1,2,0,2,3]) {
             const end = j === 1 || j === 2;
             const u = (reverseUV ? end : !end) ? face.repeats : 0;
             vertices.push(...face.vertices[j],u,Number(j>=2),...rect,
               sign*(b[0]-a[0]),sign*(b[1]-a[1]),flagsAndFace);
+            surfaceNodes.push(node);
           }
         }
       }
@@ -232,6 +254,8 @@ export function districtMesh(district) {
         const rect = banks[bank]?.[obj.image];
         if (!rect || obj.scale <= 0) continue;
         const width = rect[2]*obj.scale/64, height = rect[3]*obj.scale/64;
+        // 0x4275C uses 0x30F38's local X/Y lookup, indexed by arithmetic shift right five.
+        const xOrigin = (obj.x >> 5)*32, yOrigin = (obj.y >> 5)*32;
         const fixture = district.bankNames[bank] === 'KOBJECTS.SPR' && coreFixtures.get(obj.image);
         let emission = 0;
         if (fixture) {
@@ -239,17 +263,19 @@ export function districtMesh(district) {
           const color = district.banks[bank][obj.image].pixels[row*rect[2]+x];
           emission = 1+color+(lastRow+1)/rect[3];
           const stop = obj.image === 13;
-          lights.push([obj.x,obj.y,obj.z-height+(row+0.5)*obj.scale/64,
+          lights.push([xOrigin,yOrigin,obj.z-height+(row+0.5)*obj.scale/64,
               height*(stop ? 1.7 : 2.6),color,height*(stop ? 0.32 : 0.48)]);
         }
         for (const [u,v] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]) {
-          vertices.push(obj.x,obj.y,obj.z-height*(1-v),u,v,...rect,(u-0.5)*width,emission,-4);
+          vertices.push(xOrigin,yOrigin,obj.z-height*(1-v),u,v,...rect,(u-0.5)*width,emission,-4);
+          surfaceNodes.push(0);
         }
       }
       ranges.push({first, count: vertices.length/12-first});
     }
   }
-  return {atlas, sky, skyIndex, blockLights, ranges, vertices: new Float32Array(vertices)};
+  return {atlas, sky, skyIndex, blockLights, ranges, animations,
+    vertices:new Float32Array(vertices), surfaceNodes:Uint32Array.from(surfaceNodes)};
 }
 
 

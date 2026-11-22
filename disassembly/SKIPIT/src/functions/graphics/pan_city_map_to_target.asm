@@ -1,10 +1,9 @@
-; Analyzer entry: 0004fc48
-; Analyzer symbol: FUN_0004fc48
-; Boundary and name are provisional until independently verified.
+; pan_city_map_to_target — runtime entry 0x4FC48.
+; Steps the map scroll toward its target and converts the horizontal offset to a planar page address.
 
-%macro emit_function_0004fc48_part_00 0
+%macro emit_pan_city_map_to_target_part_00 0
     %%fragment_start:
-function_0004fc48:
+pan_city_map_to_target:
     %%insn_0004fc48_4FC48:
     push ebx ; 0004FC48 53
     %if ($ - %%insn_0004fc48_4FC48) > 1

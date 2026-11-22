@@ -1,10 +1,9 @@
-; Analyzer entry: 000517d4
-; Analyzer symbol: FUN_000517d4
-; Boundary and name are provisional until independently verified.
+; select_directional_map_waypoint — runtime entry 0x517D4.
+; Filters nonzero bay types by bearing from the current target and chooses the closest candidate by squared cell distance.
 
-%macro emit_function_000517d4_part_00 0
+%macro emit_select_directional_map_waypoint_part_00 0
     %%fragment_start:
-function_000517d4:
+select_directional_map_waypoint:
     %%insn_000517d4_517D4:
     push ecx ; 000517D4 51
     %if ($ - %%insn_000517d4_517D4) > 1

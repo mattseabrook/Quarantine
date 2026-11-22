@@ -1,10 +1,9 @@
-; Analyzer entry: 00051d38
-; Analyzer symbol: FUN_00051d38
-; Boundary and name are provisional until independently verified.
+; draw_city_map_markers — runtime entry 0x51D38.
+; Composes the moving map markers including the player heading and selected target.
 
-%macro emit_function_00051d38_part_00 0
+%macro emit_draw_city_map_markers_part_00 0
     %%fragment_start:
-function_00051d38:
+draw_city_map_markers:
     %%insn_00051d38_51D38:
     push ebx ; 00051D38 53
     %if ($ - %%insn_00051d38_51D38) > 1

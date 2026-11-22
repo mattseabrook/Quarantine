@@ -29,10 +29,10 @@ SHA-256 digests before publishing the outputs under `build/`.
 
 Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
-byte. The 1,018 documented entries comprise 1,014 analyzer-seeded functions in
-object 1, two gameport routines in object 2, and two recovered VGA routines
-in object 3. Currently 156 entries have descriptive roles (15.32%), including
-probable identifications. The other 862 retain provisional address-based names.
+byte. The 1,019 documented entries comprise 1,014 analyzer-seeded functions and
+one additional wall animation callback in object 1, two gameport routines in
+object 2, and two VGA routines in object 3. Currently 170 entries have descriptive
+roles (16.68%), including probable identifications. The other 849 retain provisional names.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
 format, toolchain, and recovered game behavior.
@@ -68,6 +68,12 @@ game process.
 | `0x2C328` | Load shared sprite assets following the manual challenge |
 | `0x4289C` | Read the district BLK header and grouped payloads, then build the runtime BSP |
 | `0x3EF9C`, `0x3F2B0`, `0x54BEB` | Open the BSP output stream, generate the tree, and write individual bytes |
+| `0x3F008` | Emit a signed 32-bit BSP plane field in big-endian order |
+| `0x35ED0`, `0x36060`, [`0x3609C`](src/functions/graphics/advance_wall_animation_sequences.asm) | Load ANIM masks and frames, reset the 30 slots, and advance active slots on the shared phase clock |
+| `0x41484`, `0x435C4` | Find the floor beneath a probe and trace movement against a BLK wall run |
+| `0x4F640`, `0x51A70` | Read the district's 40-byte BAY records and stamp their icons onto the map |
+| `0x517D4`, `0x4FC48`, `0x51D38` | Select the nearest eligible bay in a direction, pan toward the target, and draw the moving markers |
+| `0x354F8`, `0x23361`, `0x23552` | Set a map palette entry and draw transparent or opaque sprites to the wide map page |
 | `0x44A30`, `0x44A90` | Load a ZZZ palette and map overlay, and expand packed data using the decoder shared with KPG |
 | `0x2B530`, `0x2C5F8` | Load New Game district assets, including collision and trigger tables |
 | `0x2B704`, `0x45340` | Set up the district for play and initialize its indexed state table |

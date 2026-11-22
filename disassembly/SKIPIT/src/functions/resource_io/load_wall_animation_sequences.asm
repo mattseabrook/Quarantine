@@ -1,10 +1,9 @@
-; Analyzer entry: 00035ed0
-; Analyzer symbol: FUN_00035ed0
-; Boundary and name are provisional until independently verified.
+; load_wall_animation_sequences — runtime entry 0x35ED0.
+; Parses the district ANIM timing masks and ten bank/image pairs per sequence. Initializes the active frame indices.
 
-%macro emit_function_00035ed0_part_00 0
+%macro emit_load_wall_animation_sequences_part_00 0
     %%fragment_start:
-function_00035ed0:
+load_wall_animation_sequences:
     %%insn_00035ed0_35ED0:
     push ebx ; 00035ED0 53
     %if ($ - %%insn_00035ed0_35ED0) > 1

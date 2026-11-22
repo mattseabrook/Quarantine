@@ -5,7 +5,7 @@ Verified DOS target **September 28, 1994 retail `SKIPIT.EXE`**
 [![SKIPIT.EXE NASM rebuild](https://img.shields.io/badge/SKIPIT.EXE%20NASM%20rebuild-passing-2ea44f?logo=nasm)](disassembly/SKIPIT/)
 [![Q2026 Windows build](https://img.shields.io/badge/Q2026%20Windows%20build-passing-2ea44f?logo=vulkan)](Q2026/)
 [![Qwebgpu New Game](https://img.shields.io/badge/Qwebgpu%20New%20Game-awaiting%20playtest-blue)](Qwebgpu/)
-[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-15.32%25-blue)](#disassembly-progress)
+[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-16.68%25-blue)](#disassembly-progress)
 
 This repository contains the canonical lossless NASM reconstruction of the
 retail MS-DOS game executable from *Quarantine*.
@@ -76,6 +76,7 @@ directives, and rejects a build whose SHA-256 differs from the retail file.
 - [Engine and developer archaeology](#engine-and-developer-archaeology)
 - [Assembly dialect](#assembly-dialect)
 - [Mod Ideas](#mod-ideas)
+- [Runtime research notes](#runtime-research-notes)
 - [Reconstruction provenance](#reconstruction-provenance)
 - [License](#license)
 <!-- toc:end -->
@@ -84,15 +85,43 @@ directives, and rejects a build whose SHA-256 differs from the retail file.
 
 ### Running Qwebgpu
 
-```sh
-python3 -m http.server 8000 --bind 127.0.0.1 --directory Qwebgpu
+The Arch user service on `plague` serves the game over HTTPS at [plague.local:8443](https://plague.local:8443/).
+LAN requests to port 8000 redirect there.
+On the host itself, [localhost:8000](http://localhost:8000/) also works.
+The LAN listeners accept private IPv4 clients. They serve the game and the local retail files under `Qwebgpu/MS-DOS`.
+
+The service creates a self-signed certificate for `plague.local`. For direct HTTPS,
+trust the public certificate on each client. For example, run these commands in
+PowerShell on a Windows client using the Arch account's SSH access.
+
+```powershell
+scp seabrook@plague.local:.local/share/qwebgpu/plague.local.crt .
+certutil.exe -user -addstore Root .\plague.local.crt
 ```
 
-Open `http://127.0.0.1:8000/` in desktop Chrome or Brave with WebGPU
-available. Qwebgpu starts automatically and loads the retail files served through
-`Qwebgpu/MS-DOS`. Folder selection and copy protection default to off in
-`Qwebgpu/config.json`. Place matching HD PNGs in `Qwebgpu/HD`. On a separate computer, use HTTPS or the
-SSH tunnel in the [browser instructions](Qwebgpu/README.md).
+Alternatively, forward the loopback HTTP listener over SSH and open
+[localhost:8000](http://localhost:8000/) on that client.
+
+```sh
+ssh -N -L 8000:127.0.0.1:8000 seabrook@plague.local
+```
+
+With this checkout at `/opt/repos/Quarantine`, the one-time setup on Arch is
+
+```sh
+systemctl --user enable --now /opt/repos/Quarantine/services/qwebgpu/qwebgpu.service
+sudo loginctl enable-linger "$USER"
+```
+
+Systemd starts the service at boot and restarts it after failure. Use
+`systemctl --user restart qwebgpu` after changing the server itself and
+`journalctl --user -u qwebgpu -f` for its log. The shell watcher samples filenames,
+inodes, sizes and timestamps once a second, including the linked retail directory.
+Open game tabs check the revision once a second and reload the whole app when it changes.
+A reload restarts the current drive. [Service and watcher](services/qwebgpu/).
+
+Folder selection and copy protection default to off in `Qwebgpu/config.json`.
+Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/README.md).
 
 | Screen | Input | Current behavior |
 | --- | --- | --- |
@@ -104,6 +133,7 @@ SSH tunnel in the [browser instructions](Qwebgpu/README.md).
 | New Game | Key or click at the welcome prompt | Leave the loading image, enter the Core cab view and dismiss the prompt. Escape opens the menu and Resume restores the view. |
 | Driving | W/S, A/D, mouse, F, −/+ | W/S apply thrust or brake, A/D steer, and F toggles cockpit or chase. Move the mouse to look, scroll to zoom outside, and use −/+ for render resolution. |
 | Save restoration checkpoint | Key or tap | Return to the menu after inspecting a saved-game header. |
+| Settings | Tilde / backquote | Open from the main menu or cab to invert vertical mouselook and adjust Sound FX and CD audio volume. Driving settings also include the developer console. |
 
 ### Build status
 
@@ -137,13 +167,13 @@ It does not modify or deploy into `MS-DOS/`.
 | Measure | Count | Coverage |
 | --- | ---: | ---: |
 | Executable bytes represented explicitly | 572,501 / 572,501 | 100% |
-| Entries with a descriptive role | 156 / 1,018 | 15.32% |
-| Entries with provisional names | 862 / 1,018 | 84.68% |
+| Entries with a descriptive role | 170 / 1,019 | 16.68% |
+| Entries with provisional names | 849 / 1,019 | 83.32% |
 
 The semantic percentage counts working names supported by evidence, including
 entries marked probable. It measures named function entries. The code-object
-entry set comes from the analyzer and includes four hand-recovered routines
-in the other objects.
+entry set includes one additional animation callback in object 1 and four
+hand-recovered routines in the other objects.
 
 ### Mechanical reconstruction
 
@@ -158,11 +188,11 @@ in the other objects.
 - the two 16-bit gameport routines and two recovered VGA display routines in LE object 3 have individual source files;
 - unclassified tables, constants, gaps, and padding remain explicit `db` data;
 - there are zero `incbin` directives;
-- both SHA-256 and an independent byte comparison match the retail executable.
+- the build checks the rebuilt executable and standalone joystick object against their reference SHA-256 digests.
 
-Verified names appear in semantic filenames, labels, macros, and evidence
-comments. Recent entries trace the district palette, BSP render queue, object projection,
-wall columns, sprite bank conversion and palette shading. Their addresses and roles appear in
+Semantic filenames, labels, macros and comments record each identified role.
+Recent entries cover the BSP plane writer, wall animation clock, floor support,
+wall contact, map scrolling and directional bay selection. Their addresses and roles appear in
 the [disassembly index](disassembly/SKIPIT/README.md#media-and-district-resource-loaders).
 
 ## Source organization
@@ -461,9 +491,10 @@ curve and heading table. The browser uses a fixed 35 Hz simulation and
 five swept probes for cab-to-wall contact. Gameplay presentation targets 60 FPS. Three
 workers prepare district assets while WebGPU compiles the pipelines. The
 cockpit and continuously adjustable chase view share one full-detail renderer.
-DOS BSP traversal, damage, airborne motion,
-texture animation, exact DOS scan conversion, traffic and the full instrument panel
-remain open.
+The renderer resolves coplanar surfaces within each block using its retail BSP and
+advances district wall animations. Cab height follows the center and four corner floor probes.
+Cross-cell ordering, damage, full airborne motion, DOS scan conversion, traffic and
+the full instrument panel remain open.
 [Native cab renderer](Qwebgpu/cab-view.js).
 
 ### Game loop and player mechanics
@@ -491,8 +522,9 @@ messages and their cross-references.
 The DOS projection at `0x30DC8` computes screen X as
 `160 + 256 * side / max(depth, 12)`. The half-width is 160 pixels and the
 focal length is 256 pixels, giving a horizontal field of view of
-`2 * atan(160/256)`, approximately **64.0°**. Qwebgpu uses **110° horizontal** in chase.
-The cockpit framing depends on head direction and viewport aspect. Its gameplay pass shades every output pixel.
+`2 * atan(160/256)`, approximately **64.0°**. The shared Y projection adds 100 to
+`256 * (height − eyeZ) / depth` at `0x30E22`–`0x30E28`. Qwebgpu has a user-selectable horizontal field of view of 60°–120°, initially 110°.
+Both driving cameras use the selected angle. The viewport aspect determines vertical coverage.
 [DOS projection routine](disassembly/SKIPIT/src/functions/graphics/project_view_points_at_height.asm).
 
 | Component | Recovered layout | Runtime evidence |
@@ -529,12 +561,28 @@ row says otherwise. File sizes and counts refer to the retail DOS corpus.
 Working names describe the bytes consumed by the observed routines. A
 layout can be byte-accounted even where gameplay field meanings remain open.
 
+The first inventory counted 555 files, including three FLI movies, two AVI movies,
+ten ENC files and six executables. These are the size measurements recorded for
+the other resource families.
+
+| Family | Files | Combined bytes | Smallest–largest file (bytes) |
+| --- | ---: | ---: | ---: |
+| SPR | 366 | 7,739,993 | 135–59,570 |
+| IMG | 48 | 881,437 | 409–39,838 |
+| DAT | 40 | 14,743 | 1–1,840 |
+| VOC | 38 | 564,100 | 1,105–89,287 |
+| BLK | 6 | 456,824 | 8,670–147,944 |
+| BSP | 6 | 115,718 | 2,003–41,877 |
+| MAP | 6 | 103,588 | 9,202–25,078 |
+| KPG | 4 | 127,581 | 30,897–33,075 |
+| ZZZ | 4 | 29,521 | 7,081–7,833 |
+
 ### IMG
 
 43 of the 48 `.IMG` files are single-frame IMAGEX variants of GIF. They
 include full-screen UI, stills, skies, and floor sources. The five
 `MISSIL*.IMG` files use a colon/comma-delimited text grammar. Their fields
-still need runtime tracing. [IMG inventory](docs/formats/IMG.md).
+still need runtime tracing.
 
 | Offset | Type | Field | Meaning |
 | --- | --- | --- | --- |
@@ -575,7 +623,6 @@ All 83 large wall banks share the 25-byte directory `0C` followed by
 24 bytes of `40`. The directory accounts for the payload exactly.
 Earlier preview tooling grouped that same payload into larger images.
 The wall style and lighting associations remain under analysis.
-[SPR inventory](docs/formats/SPR.md).
 
 ### FLI
 
@@ -670,12 +717,15 @@ different music disc.
 The district grid is row-major and byte-accounted for all six files. The
 higher bits in observed tile words and the independent block count limit
 make the tile word a packed value. Full bit assignments remain open.
-[MAP inventory](docs/formats/MAP.md).
 
 For example, the Core starts at cell (135, 19). Its word begins at byte
 7,836 in KCITY.MAP, after four header bytes and two bytes for each of
 `19 * 199 + 135` preceding cells. Its value is `0x0024`, so its
-low seven bits select BLK slot 36.
+low seven bits select MAP ID 36. At `0x4044F` the renderer dereferences
+`DS:ABA8[36]`. Entry zero is null, entry one points to the first descriptor at
+`DS:27270`, and descriptors are 40 bytes apart. ID 36 selects zero-based BLK
+record 35. The floor and wall routines read the same pointer table at
+`0x414C4` and `0x436C2`.
 Bits 8–9 select a material variant. The block supplies local floor vertices
 and wall segments. Adding `(135 * 512, 19 * 512)` places that geometry in
 world coordinates. The same block can appear at many addresses with different
@@ -693,14 +743,14 @@ separate KEMOMAP overlays.
 | `0x02` | `u16` | Height | Number of rows |
 | `0x04` | `u16[width*height]` | Tile words | Cell `(x,y)` begins at `4 + 2*(x + y*width)` |
 
-| District file stem | Grid | MAP bytes | BLK bytes | BSP bytes |
-| --- | ---: | ---: | ---: | ---: |
-| CITY | 73×63 | 9,202 | 80,588 | 19,932 |
-| JCITY | 100×77 | 15,404 | 147,944 | 41,877 |
-| KCITY | 199×63 | 25,078 | 126,596 | 30,159 |
-| PCITY | 100×100 | 20,004 | 36,648 | 7,000 |
-| SCITY | 120×46 | 11,044 | 8,670 | 2,003 |
-| WCITY | 197×58 | 22,856 | 56,378 | 14,747 |
+| District file stem | Grid | MAP bytes | BLK bytes | BSP bytes | Distinct MAP words |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CITY | 73×63 | 9,202 | 80,588 | 19,932 | 493 |
+| JCITY | 100×77 | 15,404 | 147,944 | 41,877 | 444 |
+| KCITY | 199×63 | 25,078 | 126,596 | 30,159 | 749 |
+| PCITY | 100×100 | 20,004 | 36,648 | 7,000 | 279 |
+| SCITY | 120×46 | 11,044 | 8,670 | 2,003 | 13 |
+| WCITY | 197×58 | 22,856 | 56,378 | 14,747 | 295 |
 
 ### BLK
 
@@ -765,55 +815,69 @@ Ambient intensity is 0.28 in the shader’s approximate linear-light space.
 
 The surface shader looks up emitters by MAP cell and applies distance falloff and
 surface angle. A second GPU draw projects one halo per visible fixture in world
-units and depth-tests it against the street and exterior cab. The cockpit draws
-last. Point lights currently have no shadow maps.
+units and depth-tests it against the street and opaque cab geometry. The taxi glass draws after the halos. Point lights currently have no shadow maps.
 
 #### Cab dimensions, cameras and wall contact
 
 | Component | Geometry and behavior |
 | --- | --- |
-| Cockpit | The driver sits inside a six-face cabin. The windshield and dashboard share the front face with the steering wheel and welcome lettering. `LDOOR35.IMG` covers the left door and its mirror covers the right. Transparent window texels reveal the street. Horizontal head movement stops at 100° on either side. |
-| Exterior model reference | The yellow box measures **220 long × 97 wide × 60 high** in world units. Its origin is the driver's XY position. Its base lies at driver Z + 20 and its roof at driver Z − 40. Positive Z points down. One MAP cell is 512 units wide. |
-| Sizing evidence | The retail cab artwork has a 136-pixel side silhouette, a 60-pixel end silhouette and a height of about 37 pixels. Scaling those proportions to put the horizontal corners at the DOS probe radius gives the dimensions above. The radius is measured in code. Treat the resulting box dimensions as a modeling estimate. |
-| Chase camera | F toggles between cockpit and chase. Chase has continuous horizontal orbit and retains its wheel zoom. The boom spans 108–350 world units, starting at 210, and shortens against walls. The height above the aim point passes through 40, 70 and 110 units at the former distance presets. |
+| Cockpit | The HD camera pivots above and behind the GLB's modeled steering wheel. Cockpit and chase share its geometry and materials. The original welcome lettering appears over the model. Head movement spans 100° to either side and 45° up or down. |
+| HD model fit | On a level road, `0x31AF7` subtracts 20 from the supporting floor to set the vehicle origin. Qwebgpu scales the distance between the GLB’s lowest tyre and its modeled driver's eye to those 20 units. The resulting car measures approximately 79 long × 30 wide × 27 high. One MAP cell spans 512 units. |
+| Calibration | The eye above the HD steering wheel is a placement choice. The 120-unit wall probe is a gameplay distance. The executable supplies no dimensions for this replacement model. |
+| Chase camera | F toggles the view. The boom ranges from 46 to 130 units, initially 76. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
 
 At `0x2620A`, SKIPIT forms five headings around the direction of travel in
 the order −25°, +25°, −13°, +13°, 0°. At `0x262D5` it multiplies the
 heading components by 120 and shifts by 11 to undo the sine table's scale.
 At `0x26392` it traces the displacement between old and new probe positions.
-The wall routine filters by height, checks whether the material accepts
-back-side contact (bit 1) and ignores crossings for non-solid materials (bit 3).
+The wall routine filters by height and uses the first material pair of the BLK
+wall run to check back-side contact (bit 1) and non-solid crossings (bit 3).
 Qwebgpu uses the five probes in forward and reverse and sweeps them across
 steering changes. Its wall response uses a continuous intersection fraction
 and a clearance margin. Full DOS damage and airborne contact remain open.
 [Recovered movement routine](disassembly/SKIPIT/src/functions/runtime/resolve_player_wall_contact.asm).
 
+The renderer and collision grid use 512 units per MAP cell. The spawn routine
+shifts cell coordinates left nine bits and adds 256 at `0x31133`–`0x3113F`.
+The block renderer at `0x4044C` selects the block with `word & 0x7f` and at
+`0x40480`–`0x40489` selects its material variant from bits 8–9. Floors expand
+signed XY bytes by 32 at `0x41805` and `0x41824`. The projected floor height is
+`20 + 4 * signedHeight` at `0x41AE5`–`0x41AF9`. Wall runs add their signed XY
+steps once per repeat at `0x41DE6`–`0x41DF0`.
+
+Placed sprites snap their local XY origin to the 32-unit lookup grid at
+`0x30F56` and `0x30F61`. Their projected dimensions use `scale << 10` divided by
+depth, then multiply by the image dimension and shift right eight at `0x42774`–
+`0x427FC`. With the 256-pixel focal length this gives a world height of
+`diskHeight * scale / 64` before DOS integer rounding. The Core stop sign is
+77 pixels tall, and its two placement scales (48 and 64) make it 57.75 or
+77 units tall. The HD taxi's body and seat dimensions follow its GLB.
+
 #### The structure east of the New Game spawn
 
 At (137, 19), two cells east of the cab, `KCITY.MAP` contains `0x026E`.
-Block `0x6E`, variant 2, combines two horizontal polygons, four raised walls
-and eighteen static sprite placements. The walls have three 128-unit sections
-each. Their lower edges are at Z = −108 and their upper edges at Z = −236.
-The ground is at Z = 20. The BLK supplies the pieces below those walls.
-
-The adjacent cells at (137, 18) and (137, 20) both contain block `0x61`.
-Each has two 512-unit wall runs, one along local Y = 0 and one along Y = 512.
-Each run is eight 64-unit repeats between Z = −108 and Z = 20. Those side
-walls have records on disk. No such record seals the street under block
-`0x6E`. Filling that space with an opaque quad would close the entrance.
+MAP ID `0x6E` resolves to zero-based BLK record `0x6D`, variant 2. It has
+eight floor polygons, sixteen wall runs and ten static sprite placements.
+Seven floor records have height byte 0 (Z = 20) and one has height byte −32
+(Z = −108). Four outer wall runs stand 128 units tall on the ground; four
+more form the upper rectangle between Z = −108 and −236. In the adjacent
+cells at (137, 18) and (137, 20), ID `0x61` selects record `0x60`, with
+one floor and four placements. The earlier direct-index interpretation
+gave both adjacent cells two walls and no floor.
 
 | Feature seen from the cab | Retail evidence | Qwebgpu correction |
 | --- | --- | --- |
-| Supports beneath the upper walls | Four placements of image 40 and four of image 39 have base Z = 20 and scale 208. Image 40 is 5×41 disk pixels, giving it a world height of about 133 units. `0x40A77` passes its placement to `0x42730`. | The worker previously jumped past group 3. It now places bottom-anchored sprite quads from the object bank. Only nonzero texels write color and depth. |
-| Window panel orientation | Variant 2 uses bank 11, image 4 on all four walls. `0x3305C` changes SPR rows to columns, then `0x3C0BC` advances through whole columns as screen X increases. | The GPU samples the disk rows directly. Uploading transposed rows rotated the panels and also rotated holes in masked textures. |
+| Repeated stop signs on the starting street | Spawn ID `0x24` resolves to record `0x23`, with five floor polygons and four placements of image 0. Record `0x24` contains two placements of image 13 (STOP). | Meshes, lights, collision, support and console diagnostics use the executable’s block pointers. |
+| Window panel orientation | `0x3305C` changes SPR rows to columns, then `0x3C0BC` advances through whole columns as screen X increases. | The GPU samples the disk rows directly. |
 | Which wall spans can show through | `0x41FA5` and `0x4247C` consult flag bit 1 for the reverse side. The uniform path tests bit 0 for masking. The high-detail sectioned loop at `0x3C7EF` tests the whole flag byte. Both read materials from screen left to right. | Sectioned walls select the material for the viewed side before testing its transparency. An opaque column writes index zero as a color. A masked column skips a zero source texel before shading. |
 | Road surface | `0x44184` receives floor scale and orientation. The four jump-table entries at `0x44174` select quarter-turns. A scale of 1 doubles the repeat period to 128 world units. | The mesh uses the BLK rotation and scale for each polygon. |
-| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40EEE` skips block zero. | Chunked render bundles cover the full district. Distant geometry fades through district-colored fog to black. |
+| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40F01` checks the descriptor pointer. | The renderer submits the occupied cells in that neighborhood, including their sprites and halos. The GPU clips to the selected FOV. |
 | Distance shading | The first RGB triple in `DATA1.DAT` specifies black. `0x34094` builds sixteen palette remaps. The 64 bytes at `DS:0x8C7A` select a remap by depth. | The shader looks up the street color after the mask test. The cab overlay keeps its display palette. |
 
 The port uses a GPU depth buffer. DOS interpolates shade values along projected spans and visits
-the block BSP in painter order. The browser samples depth per fragment and
-can choose a different palette entry for equally close colors. The screenshots
+the block BSP in painter order. For surfaces sharing a plane within one block, the
+browser applies the camera-dependent BSP order as a small depth adjustment. Separate
+cells still use the existing wall overlap heuristic. Palette matches can differ for equally close colors. The screenshots
 show the earlier renderer. A visual comparison of this revision is pending.
 
 ### BSP
@@ -826,9 +890,16 @@ stream while constructing the runtime tree. [BSP builder](disassembly/SKIPIT/src
 | Stream element | Type | Meaning |
 | --- | --- | --- |
 | Split choice | `u8` | Ordinal of the selected item in the current linked list |
+| Split plane | Signed big-endian 32-bit values | A floor stores its height. A wall stores local X, Y, normal X and normal Y. `0x3F008` emits the high byte first. |
 | Partition decisions | One byte per remaining item | `0xFF` or `0x01` identifies which side receives each item |
 | Child partitions | Recursive byte stream | Process the two child lists in call order. An empty list creates a terminal runtime node. |
 | Node in memory | `0x24` bytes | Includes type, geometry references, split data, and child pointers |
+
+The initial list holds floors in reverse record order, then walls in reverse
+record order. An empty list consumes zero bytes. If no splitter qualifies, the
+writer emits the list length as the ordinal and ends that branch. At a successful
+split it prepends each remaining record to its assigned child, then writes the
+negative child before the positive child.
 
 The exact reconstruction of a complete retail BSP stream from the source
 block geometry still needs a differential test.
@@ -837,17 +908,16 @@ block geometry still needs a differential test.
 
 The extension covers several independent binary and text layouts.
 District numbers select families with suffixes `0` through `5`. Garage
-tables have suffixes `0` through `4`. [DAT inventory](docs/formats/DAT.md),
-[floor and wall loader](disassembly/SKIPIT/src/functions/resource_io/load_floor_and_wall_texture_tables.asm).
+tables have suffixes `0` through `4`. [Floor and wall loader](disassembly/SKIPIT/src/functions/resource_io/load_floor_and_wall_texture_tables.asm).
 
 | Family | Observed layout | Runtime use |
 | --- | --- | --- |
 | `FLOOR%d.DAT` | First 15 ASCII digits, followed by CRLF and optional additional lines | The loader subtracts ASCII zero and maps floor texture attributes |
 | `TEXTURE%d.DAT` | First 15 rows of 12 ASCII hexadecimal flags with CRLF | The loader decodes nibbles and records the `(row,column)` pairs whose bit 2 is set |
 | `DATA%d.DAT` | Annotated colon-delimited text, 88 bytes per file | `0x33EE0` loads district rendering parameters. The first line identifies depth-shade RGB. |
-| `ANIM%d.DAT` | ASCII records with comma-separated `number:number` fields | Animation configuration. Exact field mapping remains open. |
+| `ANIM%d.DAT` | ASCII `s<mask>` followed by ten `:bank,image` pairs | A bank of 99 ends the sequence. The callback at `0x3609C` advances active frames when the current phase has none of the mask bits set. |
 | `OBJ%d.DAT` | Fixed-width digit rows and an `EOF` marker, with comments after it | Object-page configuration. Exact field mapping remains open. |
-| `BAY%d.DAT` | Binary files of 560–1,840 bytes, all multiples of 40 | `0x4F640` selects the district garage data. Full field layouts remain open. |
+| `BAY%d.DAT` | Binary files of 560–1,840 bytes, all multiples of 40 | `0x4F640` selects the district garage data. Type is at +0, world X at +4 and world Y at +8. The map uses these fields for bay symbols and directional selection. |
 | `COLLDAT.DAT`, `TRIGDAT.DAT` | Comma-prefixed decimal integers terminated by a colon | `0x2C6A8` expands the text into words. `0x2C5F8` copies 128 words starting at `district * 128` from each table. |
 | `CONFIG.DAT`, `INPUT.DAT`, `SOUND.DAT` | Retail files are 1, 2, and 2 bytes respectively | Installation settings. Input and sound loads are referenced at `0x30430` and `0x4A435`. |
 
@@ -857,7 +927,7 @@ tables have suffixes `0` through `4`. [DAT inventory](docs/formats/DAT.md),
 under XOR `0x55` per byte. The records include slash-prefixed speaker
 lines and quoted text. The corpus also contains `BSTOCK.ENC`,
 `ENEMY.ENC`, and `GAME.ENC`. `0x455FC` references the game-data file.
-The exact fields in those three files remain open. [ENC inventory](docs/formats/ENC.md).
+The exact fields in those three files remain open.
 
 | PW.ENC record offset | Type | Decoded field | Values in the retail corpus |
 | --- | --- | --- | --- |
@@ -992,6 +1062,29 @@ of whether the historical source was C, C++, Pascal, or handwritten assembly.
 No mod patches are applied to the canonical reconstruction. Mod work should
 produce a separate output so `disassembly/SKIPIT/build/SKIPIT-rebuilt.exe`
 remains the immutable byte-identical reference.
+
+## Runtime research notes
+
+The format inventory came from an Arch Linux static-analysis workspace. The
+Windows tracing workflow pairs DOSBox-X guest file events with Process Monitor
+host reads. Mount the unpacked DOS directory so each host path identifies one game
+asset. Launch DOSBox-X with `-console -debug -log-int21 -log-fileio`. In Process
+Monitor, filter on `dosbox-x.exe` and the mounted directory, then capture
+`CreateFile`, `ReadFile` and `CloseFile` with time, result, offset and length.
+Captures at title, first controllable frame, map and garage distinguish startup
+resources from district and UI loads.
+
+Host buffering can change read boundaries. Exact guest reads require logging
+INT 21h open, read, seek and close calls, including the DOS handle, position,
+requested and returned lengths, and the guest destination at DS:DX. For palette
+work, capture VGA DAC index writes at `0x3C8` and RGB writes at `0x3C9` alongside
+the frame. The early palette scans found 6,681 candidate windows with one scan
+cap and 8,284 with another. Runtime DAC writes establish which palette was active.
+
+Keep captures, disc images, extracted artwork and dialogue in private local
+storage. The Japanese PlayStation release *Hard Rock Cab* provides a comparison
+source for TIM images, STR video, XA audio and CD tracks. The Saturn release is
+*Death Throttle*. These are separate from the September 1994 DOS corpus.
 
 ## Reconstruction provenance
 

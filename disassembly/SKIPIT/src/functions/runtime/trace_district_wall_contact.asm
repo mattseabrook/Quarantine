@@ -1,10 +1,9 @@
-; Analyzer entry: 000435c4
-; Analyzer symbol: FUN_000435c4
-; Boundary and name are provisional until independently verified.
+; trace_district_wall_contact — runtime entry 0x435C4.
+; Checks a movement segment against district wall runs, including each side’s material contact flags and vertical limits.
 
-%macro emit_function_000435c4_part_00 0
+%macro emit_trace_district_wall_contact_part_00 0
     %%fragment_start:
-function_000435c4:
+trace_district_wall_contact:
     %%insn_000435c4_435C4:
     push esi ; 000435C4 56
     %if ($ - %%insn_000435c4_435C4) > 1

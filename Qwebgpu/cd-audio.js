@@ -1,7 +1,10 @@
+import {bindCdVolume} from './settings.js';
+
 // The DOS intro issues a play request from track 02 INDEX 01 to lead-out.
 // Each local FLAC retains the two-second INDEX 00 in its split BIN file.
 export function playIntroDisc(getTrack) {
   const player = new Audio();
+  const unbindVolume = bindCdVolume(player);
   let track = 2, url, stopped = false;
   function release() {
     if (url) URL.revokeObjectURL(url);
@@ -21,6 +24,7 @@ export function playIntroDisc(getTrack) {
   player.addEventListener('ended', advance);
   advance();
   return () => {
+    unbindVolume();
     stopped = true;
     player.removeEventListener('ended', advance);
     player.pause();
@@ -32,6 +36,7 @@ export function playIntroDisc(getTrack) {
 
 export function createDrivingDisc(getTrack, report, initialTrack = 2) {
   const player = new Audio();
+  const unbindVolume = bindCdVolume(player);
   let track = initialTrack, url, generation = 0, closed = false, paused = false;
 
   function release() {
@@ -97,6 +102,7 @@ export function createDrivingDisc(getTrack, report, initialTrack = 2) {
     },
     currentTrack() { return track; },
     close() {
+      unbindVolume();
       closed = true;
       generation++;
       player.pause();

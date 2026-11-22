@@ -1,10 +1,9 @@
-; Analyzer entry: 0004f640
-; Analyzer symbol: FUN_0004f640
-; Boundary and name are provisional until independently verified.
+; load_district_bay_records — runtime entry 0x4F640.
+; Reads the selected BAY file as fixed 40-byte records for the district map.
 
-%macro emit_function_0004f640_part_00 0
+%macro emit_load_district_bay_records_part_00 0
     %%fragment_start:
-function_0004f640:
+load_district_bay_records:
     %%insn_0004f640_4F640:
     push ebx ; 0004F640 53
     %if ($ - %%insn_0004f640_4F640) > 1

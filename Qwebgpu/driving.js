@@ -1,10 +1,11 @@
-import {cabBody, chaseRange} from './cab-dimensions.js';
+import {cabBody, chaseRange, rideHeight} from './cab-dimensions.js';
 
 // DOS 0x1AD00 initializes the keyboard dynamics and 0x1AD98 integrates them.
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
 export const ticksPerSecond = 35;
 const fullTurn = 5760, quarter = 1440;
 const cabinYawLimit = 100*Math.PI/180;
+const cabinPitchLimit = 45*Math.PI/180;
 const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
 function sine(table, angle) {
@@ -17,13 +18,14 @@ function sine(table, angle) {
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
-    speed: 0, steering: 0, camera: 0, lookYaw: 0, orbitYaw: 0, chasePitch: null, chaseDistance: chaseRange.middle};
+    supportZ:start.z, fallSpeed:0, headlights:true,
+    speed: 0, steering: 0, camera: 0, lookYaw: 0, lookPitch: 0, orbitYaw: 0, chasePitch: null, chaseDistance: chaseRange.middle};
 }
 
 function chaseLift(distance) {
   const {near,middle,far} = chaseRange;
-  return distance <= middle ? 40+30*(distance-near)/(middle-near) :
-    70+40*(distance-middle)/(far-middle);
+  return distance <= middle ? 15+11*(distance-near)/(middle-near) :
+    26+18*(distance-middle)/(far-middle);
 }
 
 export function turnView(car, movementX, movementY = 0) {
@@ -37,6 +39,7 @@ export function turnView(car, movementX, movementY = 0) {
     }
   } else {
     car.lookYaw = Math.max(-cabinYawLimit,Math.min(cabinYawLimit,car.lookYaw+delta));
+    car.lookPitch = Math.max(-cabinPitchLimit,Math.min(cabinPitchLimit,car.lookPitch+movementY*0.0025));
   }
 }
 
@@ -45,30 +48,53 @@ export function zoomChase(car,pixels) {
     car.chaseDistance*Math.exp(pixels*0.0018)));
 }
 
-// Test against the actual vertical BLK faces surrounding a point. Floor quads
-// can share a cell with walls, so the block number alone cannot decide a hit.
-function wallContact(district, x, y, z, radius) {
-  const {wallOffsets,walls} = district;
-  if (x < radius || x >= district.width*512-radius) return [1,0];
-  if (y < radius || y >= district.height*512-radius) return [0,1];
-  for (let cy = Math.floor((y-radius)/512); cy <= Math.floor((y+radius)/512); cy++) {
-    for (let cx = Math.floor((x-radius)/512); cx <= Math.floor((x+radius)/512); cx++) {
-      const tile = district.tiles[cy*district.width+cx];
-      const id = (tile&127)*4+((tile>>>8)&3);
-      for (let at = wallOffsets[id]; at < wallOffsets[id+1]; at += 6) {
-        if (z < walls[at+4] || z > walls[at+5]) continue;
-        const dx = walls[at+2], dy = walls[at+3], len = dx*dx+dy*dy;
-        if (!len) continue;
-        const px = x-cx*512-walls[at], py = y-cy*512-walls[at+1];
-        const t = Math.max(0,Math.min(1,(px*dx+py*dy)/len));
-        if ((px-t*dx)**2 + (py-t*dy)**2 < radius*radius) {
-          const length = Math.sqrt(len);
-          return [-dy/length,dx/length];
+// The exterior camera is a browser feature. Trace its boom against the
+// actual wall panels and floor triangles, including overhead decks.
+function chaseClearance(district,x,y,z,dx,dy,dz) {
+  const margin = 2/Math.hypot(dx,dy,dz);
+  let limit = 1+margin;
+  if (dx < 0) limit = Math.min(limit,-x/dx);
+  if (dx > 0) limit = Math.min(limit,(district.width*512-x)/dx);
+  if (dy < 0) limit = Math.min(limit,-y/dy);
+  if (dy > 0) limit = Math.min(limit,(district.height*512-y)/dy);
+  const left = Math.max(0,Math.floor(Math.min(x,x+dx)/512)-1);
+  const right = Math.min(district.width-1,Math.floor(Math.max(x,x+dx)/512)+1);
+  const top = Math.max(0,Math.floor(Math.min(y,y+dy)/512)-1);
+  const bottom = Math.min(district.height-1,Math.floor(Math.max(y,y+dy)/512)+1);
+  for (let row=top; row<=bottom; row++) {
+    for (let col=left; col<=right; col++) {
+      const block = district.diagnostics.blocks[district.tiles[row*district.width+col]&127];
+      const x0 = x-col*512, y0 = y-row*512;
+      for (const {segment:[wx,wy,sx,sy,upper,lower]} of block.wallRuns) {
+        const det = dx*sy-dy*sx;
+        if (!det) continue;
+        const ax = wx-x0, ay = wy-y0;
+        const t = (ax*sy-ay*sx)/det, u = (ax*dy-ay*dx)/det;
+        const height = z+t*dz;
+        if (t >= 0 && t <= limit && u >= 0 && u <= 1 && height >= upper && height <= lower) limit = t;
+      }
+      if (!dz) continue;
+      for (const face of block.faces) {
+        if (!face.floor) break; // BLK floors precede the walls.
+        const [a] = face.vertices;
+        if (!a) continue;
+        const t = (a[2]-z)/dz;
+        if (t < 0 || t > limit) continue;
+        const px = x0+t*dx, py = y0+t*dy;
+        for (let k=2; k<face.vertices.length; k++) {
+          const b = face.vertices[k-1], c = face.vertices[k];
+          const ab = (b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0]);
+          const bc = (c[0]-b[0])*(py-b[1])-(c[1]-b[1])*(px-b[0]);
+          const ca = (a[0]-c[0])*(py-c[1])-(a[1]-c[1])*(px-c[0]);
+          if (ab+bc+ca !== 0 && (Math.min(ab,bc,ca) >= 0 || Math.max(ab,bc,ca) <= 0)) {
+            limit = t;
+            break;
+          }
         }
       }
     }
   }
-  return null;
+  return Math.min(1,Math.max(0,limit-margin));
 }
 
 // Sweep each leading probe from its old position to its proposed position.
@@ -126,15 +152,55 @@ function sweepCab(car,district,dx,dy,oldAngle,newAngle,reverse) {
   return first;
 }
 
+// 0x41484 tests the first and third BLK vertices as inclusive local bounds.
+// Positive Z points down. A deck above the cab cannot support it from below.
+function floorBelow(district,x,y,z) {
+  const cx = x>>9, cy = y>>9;
+  if (cx < 0 || cy < 0 || cx >= district.width || cy >= district.height) return 0;
+  let floor = 32000;
+  const localX = x&511, localY = y&511;
+  for (const [x0,y0,x1,y1,height] of district.supportFloors[district.tiles[cy*district.width+cx]&127]) {
+    if (localX >= x0 && localX <= x1 && localY >= y0 && localY <= y1 && height >= z && height < floor) floor = height;
+  }
+  return floor === 32000 ? 0 : floor;
+}
+
+function followFloor(car,district) {
+  const {sine:table} = district.start;
+  let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
+  for (const offset of [-400,400,2480,3280]) {
+    const a = car.angle+offset;
+    const x = Math.trunc(car.x)+(100*sine(table,a)>>11);
+    const y = Math.trunc(car.y)+(100*sine(table,a+quarter)>>11);
+    const height = floorBelow(district,x,y,car.z)-rideHeight;
+    support = Math.min(support,height < car.supportZ-20 ? car.supportZ : height);
+  }
+  car.supportZ = support;
+  if (car.z < support) {
+    // DS:FAE0 is entry 160 of the rate-adjusted table built at 0x108BA.
+    car.fallSpeed += Math.trunc(160*12/ticksPerSecond);
+    car.z = Math.min(support,car.z+(car.fallSpeed>>6));
+  } else {
+    car.z = support;
+  }
+  if (car.z === support) car.fallSpeed = 0;
+}
+
 export function driveTick(car, district, keys) {
+  const impact = moveCab(car,district,keys);
+  followFloor(car,district);
+  return impact;
+}
+
+function moveCab(car, district, keys) {
   const hz = ticksPerSecond;
   const speed = car.speed >> 8;
-  if (keys.has('KeyW')) {
+  if (keys.has('KeyW') || keys.has('ArrowUp')) {
     const band = Math.max(0, Math.min(district.start.thrust.length-1, speed >> 5));
     const impulse = Math.trunc(256*district.start.thrust[band]/hz);
     car.speed += impulse;
     if (car.speed < 0) car.speed += impulse;
-  } else if (keys.has('KeyS')) {
+  } else if (keys.has('KeyS') || keys.has('ArrowDown')) {
     car.speed = Math.max(-100*256, car.speed + Math.trunc(-976/hz)*64);
   } else {
     car.speed -= Math.sign(car.speed)*Math.min(Math.abs(car.speed),256);
@@ -142,10 +208,10 @@ export function driveTick(car, district, keys) {
 
   const turn = Math.trunc(1000/hz), center = Math.trunc(1536/hz);
   // Left has priority when both directions are down (0x1AF0C).
-  if (keys.has('KeyA')) {
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) {
     car.steering = Math.min(480, car.steering+turn);
     if (car.steering < 0) car.steering = Math.min(0, car.steering+center);
-  } else if (keys.has('KeyD')) {
+  } else if (keys.has('KeyD') || keys.has('ArrowRight')) {
     car.steering = Math.max(-480, car.steering-turn);
     if (car.steering > 0) car.steering = Math.max(0, car.steering-center);
   } else {
@@ -184,16 +250,17 @@ export function driveTick(car, district, keys) {
 export function cameraPose(car, district) {
   const angle = car.angle*Math.PI/2880 + (car.camera ? car.orbitYaw : car.lookYaw);
   const fx = Math.sin(angle), fy = Math.cos(angle);
-  if (!car.camera) return {x:car.x,y:car.y,z:car.z,fx,fy,angle,pitch:0};
+  if (!car.camera) {
+    const [right,forward,down] = district.taxiEye ?? [0,0,0];
+    // The seat rotates with the body. Looking through a door pivots at the driver's eye.
+    const heading = car.angle*Math.PI/2880, x = Math.sin(heading), y = Math.cos(heading);
+    return {x:car.x-y*right+x*forward,y:car.y+x*right+y*forward,z:car.z+down,
+      fx,fy,angle,pitch:car.lookPitch};
+  }
   const distance = car.chaseDistance;
   const lift = chaseLift(distance);
-  const targetZ = car.z+cabBody.base-cabBody.height/2;
-  let clear = 0;
-  for (let d = 8; d < distance+8; d += 8) {
-    const step = Math.min(d,distance);
-    if (wallContact(district,car.x-fx*step,car.y-fy*step,targetZ-lift*step/distance,5)) break;
-    clear = step;
-  }
-  return {x:car.x-fx*clear,y:car.y-fy*clear,z:targetZ-lift*clear/distance,
+  const targetZ = car.z+(district.taxiCenterZ ?? (cabBody.base-cabBody.height/2));
+  const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift);
+  return {x:car.x-fx*distance*clear,y:car.y-fy*distance*clear,z:targetZ-lift*clear,
     fx,fy,angle,pitch:car.chasePitch ?? Math.atan2(lift,distance)};
 }

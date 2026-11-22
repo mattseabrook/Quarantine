@@ -7,6 +7,7 @@ import { playIntroDisc } from './cd-audio.js';
 import { storyCrawl } from './intro.js';
 import { fliFrames } from './fli.js';
 import { playAvi } from './play-avi.js';
+import {effectsOutput} from './settings.js';
 
 const screen = document.querySelector('#screen');
 const launcher = document.querySelector('#launcher');
@@ -34,6 +35,7 @@ const files = new Map();
 const pendingFiles = new Map();
 let display;
 let audio;
+const audioGestures = new WeakSet();
 let config;
 let configError;
 let uploaded = false;
@@ -144,7 +146,7 @@ async function loadImage(name) {
 function sound(buffer) {
   const source = audio.createBufferSource();
   source.buffer = buffer;
-  source.connect(audio.destination);
+  source.connect(effectsOutput(audio));
   const ended = new Promise(done => source.addEventListener('ended', () => {
     source.disconnect();
     done();
@@ -242,6 +244,7 @@ async function manualChallenge({lines, widths, glyphs, background, question, vga
 async function splash(vga, image, voice) {
   vga.setImage(image);
   await vga.fade(image.dac, true);
+  await waitForAudio();
   await sound(voice).ended;
   await vga.fade(image.dac, false);
 }
@@ -275,7 +278,7 @@ async function playAttract(movie, voice, vga, tables) {
       try {
         palette = await playMovie(movie, 'TITLE.FLI', 4, () => skipped);
       } finally {
-        playback?.source.stop();
+        playback?.source?.stop();
       }
       const enterMenu = skipped;
       await vga.fade(palette, false, linear);
@@ -317,6 +320,21 @@ async function playAttract(movie, voice, vga, tables) {
   }
 }
 
+// The browser may keep resume() pending until the first trusted gesture.
+async function waitForAudio() {
+  if (audio.state === 'running') return;
+  await new Promise((resolve,reject) => {
+    function changed() {
+      if (audio.state !== 'running' && audio.state !== 'closed') return;
+      audio.removeEventListener('statechange',changed);
+      if (audio.state === 'running') resolve();
+      else reject(new Error('Game audio was closed.'));
+    }
+    audio.addEventListener('statechange',changed);
+    changed();
+  });
+}
+
 async function playWrapperMovie(name) {
   const file = await getFile(name, true);
   if (!file) return;
@@ -330,7 +348,7 @@ async function playWrapperMovie(name) {
     }
     display.presentAvi(pixels);
     firstFrame = false;
-  });
+  },waitForAudio,event => audioGestures.has(event));
   return true;
 }
 
@@ -342,13 +360,14 @@ async function startGame() {
   try {
     if (!window.AudioContext) throw new Error('Web Audio is unavailable.');
     if (!audio) audio = new AudioContext({latencyHint: 0.005});
-    const unlockAudio = () => {
+    const unlockAudio = event => {
       if (audio.state !== 'running') {
+        if (event) audioGestures.add(event);
         audio.resume().catch(error => console.error('Unable to enable game audio:', error));
       }
     };
-    document.addEventListener('keydown', unlockAudio, {signal: audioEvents.signal});
-    document.addEventListener('click', unlockAudio, {signal: audioEvents.signal});
+    document.addEventListener('keydown', unlockAudio, {capture:true,signal:audioEvents.signal});
+    document.addEventListener('click', unlockAudio, {capture:true,signal:audioEvents.signal});
     unlockAudio();
     display ??= await createDisplay(screen);
     if (!sessionStorage.getItem(introPlayedKey) && await playWrapperMovie('BQUAR1DK.AVI')) {

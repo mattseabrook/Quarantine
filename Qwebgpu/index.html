@@ -16,15 +16,42 @@
     </div>
     <p id="checkpoint" role="status" hidden></p>
     <a id="uploadMode" href="?upload=1" hidden>Select game folder</a>
-    <section id="console" aria-label="Game debugging console" hidden>
-      <div class="console-title">Qwebgpu console <span>~ or Escape to close</span></div>
+    <dialog id="settingsPanel" aria-labelledby="settingsTitle">
+      <header class="settings-header">
+        <h2 id="settingsTitle">Settings</h2>
+        <form method="dialog"><button class="settings-close">Close <kbd>Esc</kbd></button></form>
+      </header>
+      <fieldset class="settings-group"><legend>View</legend>
+        <div class="volume-row"><label for="fov">Horizontal FOV</label>
+          <output for="fov"></output>
+          <input type="range" min="60" max="120" step="1" value="110" id="fov">
+        </div>
+      </fieldset>
+      <fieldset class="settings-group"><legend>Mouse</legend>
+        <label class="invert-row" for="invertY">Invert vertical mouselook
+          <input type="checkbox" role="switch" id="invertY">
+        </label>
+      </fieldset>
+      <fieldset class="settings-group"><legend>Audio</legend>
+        <div class="volume-row"><label for="effectsVolume">Sound FX volume</label>
+          <output for="effectsVolume" id="effectsPercent"></output>
+          <input type="range" min="0" max="100" id="effectsVolume">
+        </div>
+        <div class="volume-row"><label for="cdVolume">CD audio volume</label>
+          <output for="cdVolume" id="cdPercent"></output>
+          <input type="range" min="0" max="100" id="cdVolume">
+        </div>
+      </fieldset>
+      <details id="console" hidden>
+      <summary>Developer console</summary>
       <pre id="consoleStatus"></pre>
       <pre id="consoleOutput" aria-live="polite"></pre>
       <form id="consoleForm">
         <label for="consoleInput">&gt;</label>
         <input id="consoleInput" type="text" autocomplete="off" spellcheck="false" aria-label="Console command">
       </form>
-    </section>
+      </details>
+    </dialog>
     <section id="launcher" aria-labelledby="title">
       <h1 id="title">Quarantine</h1>
       <p id="sourceDescription">Game files are served from the local MS-DOS directory.</p>

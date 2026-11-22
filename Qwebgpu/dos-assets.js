@@ -31,7 +31,16 @@ export function readPromptTables(bytes) {
   const asset = table => stringAt(table + district * 4).toUpperCase();
   const start = base + 0x8b20 + district * 6;
   const newGame = {
-    district, map: asset(0x66b0), blocks: asset(0xadac), floor: asset(0x6680), sky: asset(0x6698),
+    district, map: asset(0x66b0), blocks: asset(0xadac), bsp:asset(0xadc4), floor: asset(0x6680), sky: asset(0x6698),
+    // 0x4044F and 0x414C4 dereference a MAP id through this table. BLK
+    // directory record zero lives at DS:27270, with 40 bytes per descriptor.
+    blockRecords: Array.from({length:128}, (_,i) => {
+      const pointer = view.getUint32(base+0xaba8+4*i,true);
+      return pointer ? (pointer-0x27270)/40 : -1;
+    }),
+    viewCells: Array.from({length:49}, (_,i) => [
+      view.getInt16(base+0xa9ba+4*i,true), view.getInt16(base+0xa9bc+4*i,true),
+    ]),
     panorama: bytes[base+0x97aa+district] !== 0,
     wallBanks: Array.from({length: 16}, (_, i) => stringAt(0x64e8 + district * 64 + i * 4).toUpperCase()),
     shadeWeights: Array.from({length:16}, (_, i) => view.getInt16(base+0x8c5a+2*i,true)),
@@ -46,6 +55,11 @@ export function readPromptTables(bytes) {
       divisorX: view.getInt32(base + 0xc708, true), divisorY: view.getInt32(base + 0xc70c, true),
       offsetX: view.getInt16(base + 0xc710 + district * 4, true),
       offsetY: view.getInt16(base + 0xc712 + district * 4, true),
+      headingIcons: Array.from({length:8}, (_,i) => 120+view.getUint16(base+0xc768+2*i,true)),
+      bearings: Array.from({length:256}, (_,i) => view.getUint16(base+0x8868+2*i,true)),
+      firstColor: view.getUint16(base+0xc730+4*district,true),
+      endColor: view.getUint16(base+0xc732+4*district,true),
+      colors: Array.from({length:18}, (_,i) => view.getUint16(base+0xc744+2*i,true)),
     },
   };
   return { lines, storyLines, newGame, widths: advances(0xaee8), slotWidths: advances(0xae70), menuY, step: view.getUint16(base + 0x8c56, true) };

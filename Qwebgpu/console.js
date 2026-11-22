@@ -1,4 +1,3 @@
-import {cameraPose} from './driving.js';
 import {wallFlags} from './district-mesh.js';
 
 export function createConsole(screen, district, car, view) {
@@ -7,7 +6,9 @@ export function createConsole(screen, district, car, view) {
   const output = document.querySelector('#consoleOutput');
   const form = document.querySelector('#consoleForm');
   const input = document.querySelector('#consoleInput');
+  panel.hidden = false;
   const events = new AbortController(), options = {signal:events.signal};
+  panel.closest('dialog').addEventListener('close', () => { panel.open = false; }, options);
   const history = [];
   let historyAt = 0, lastUpdate = 0;
   const hex = (value, width=2) => value.toString(16).toUpperCase().padStart(width,'0');
@@ -19,8 +20,8 @@ export function createConsole(screen, district, car, view) {
     return {word,block,variant,id:block*4+variant};
   }
   function statusText(fps) {
-    const [x,y] = cell(), tile = tileAt(x,y), camera = cameraPose(car,district), stats = view.stats();
-    const here = tile ? `tile ${x},${y} word 0x${hex(tile.word,4)} block ${tile.block} variant ${tile.variant}` :
+    const [x,y] = cell(), tile = tileAt(x,y), camera = view.cameraFor(car), stats = view.stats();
+    const here = tile ? `tile ${x},${y} word 0x${hex(tile.word,4)} MAP id ${tile.block} BLK record ${district.start.blockRecords[tile.block] < 0 ? 'none' : district.start.blockRecords[tile.block]} variant ${tile.variant}` :
       `tile ${x},${y} outside map`;
     const range = tile && district.mesh.ranges[tile.id];
     const walls = tile ? (district.wallOffsets[tile.id+1]-district.wallOffsets[tile.id])/6 : 0;
@@ -46,7 +47,7 @@ export function createConsole(screen, district, car, view) {
     const [cx,cy] = cell(), x = cx+dx, y = cy+dy, tile = tileAt(x,y);
     if (!tile) return `Cell ${x},${y} is outside the map.`;
     const {blocks,flags,bankSizes} = district.diagnostics;
-    const block = blocks[tile.block], camera = cameraPose(car,district);
+    const block = blocks[tile.block], camera = view.cameraFor(car);
     const lines = [`Cell ${x},${y}: word 0x${hex(tile.word,4)}, block ${tile.block}, variant ${tile.variant}, material stride ${block.variantStride}`];
     for (const [i,face] of block.faces.entries()) {
       if (face.floor) continue;
@@ -72,7 +73,7 @@ export function createConsole(screen, district, car, view) {
   function floorsText(dx=0,dy=0) {
     const [cx,cy] = cell(), x = cx+dx, y = cy+dy, tile = tileAt(x,y);
     if (!tile) return `Cell ${x},${y} is outside the map.`;
-    const block = district.diagnostics.blocks[tile.block], camera = cameraPose(car,district);
+    const block = district.diagnostics.blocks[tile.block], camera = view.cameraFor(car);
     const lines = [`Floors in cell ${x},${y}: block ${tile.block}, variant ${tile.variant}`];
     for (const [i,face] of block.faces.entries()) {
       if (!face.floor) continue;
@@ -93,17 +94,16 @@ export function createConsole(screen, district, car, view) {
   let fps = 0;
   function update(now, frameRate) {
     fps = frameRate;
-    if (!panel.hidden && now-lastUpdate >= 250) {
+    if (panel.open && now-lastUpdate >= 250) {
       status.textContent = statusText(fps);
       lastUpdate = now;
     }
   }
-  function open() {
-    panel.hidden = false;
+  panel.addEventListener('toggle', () => {
+    if (!panel.open) return;
     status.textContent = statusText(fps);
     input.focus();
-  }
-  function close() { panel.hidden = true; input.value = ''; screen.focus(); }
+  }, options);
   function report() { return [statusText(fps),mapText(),wallsText(),floorsText()].join('\n\n'); }
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -141,6 +141,6 @@ export function createConsole(screen, district, car, view) {
   window.addEventListener('error', e => write('Error: ' + e.message), options);
   window.addEventListener('unhandledrejection', e => write('Unhandled rejection: ' + String(e.reason)), options);
   write('Qwebgpu debug console. Type help for commands.');
-  return {open,close,update,write,isOpen:() => !panel.hidden,
-    destroy() { events.abort(); panel.hidden = true; output.textContent = ''; }};
+  return {update,write,
+    destroy() { events.abort(); panel.open = false; panel.hidden = true; input.value = ''; output.textContent = ''; }};
 }

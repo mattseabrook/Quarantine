@@ -1,6 +1,7 @@
 ; Analyzer entry: 0004043c
 ; Analyzer symbol: FUN_0004043c
-; Boundary and name are provisional until independently verified.
+; 0x4044C masks the MAP word to seven bits. DS:ABA8 maps id 1 to the
+; first 40-byte BLK descriptor at DS:27270. Bits 8–9 index its material variant.
 
 %macro emit_function_0004043c_part_00 0
     %%fragment_start:

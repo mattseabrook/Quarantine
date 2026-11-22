@@ -1,10 +1,12 @@
-; Analyzer entry: 00041484
-; Analyzer symbol: FUN_00041484
-; Boundary and name are provisional until independently verified.
+; find_floor_below_point — runtime entry 0x41484.
+; Tests the first and third corners of each floor record and returns the closest supporting height below the probe in the DOS Z convention.
 
-%macro emit_function_00041484_part_00 0
+; 0x414C4 shares the renderer's DS:ABA8 descriptor lookup. A null cell
+; returns zero at 0x414D3 before visiting any floor records.
+
+%macro emit_find_floor_below_point_part_00 0
     %%fragment_start:
-function_00041484:
+find_floor_below_point:
     %%insn_00041484_41484:
     push ecx ; 00041484 51
     %if ($ - %%insn_00041484_41484) > 1
