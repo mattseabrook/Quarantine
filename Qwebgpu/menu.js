@@ -116,7 +116,7 @@ async function loadMenu({screen, vga, tables, bytes, loadImage, getFile, click})
   return restore;
 }
 
-async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, audio}, restoring) {
+async function loadFromMenu({screen, display, vga, loadImage, getFile, bytes, tables, audio}, restoring) {
   const image = await loadImage('WAIT.IMG');
   vga.setImage(image);
   vga.present();
@@ -127,16 +127,17 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, a
     if (!restoring) {
       try {
         const prepared = prepareCabPipelines(display);
-        const [district,pipelines,sounds,taxi] = await Promise.all([
+        const [district,pipelines,sounds,taxi,wayfinder] = await Promise.all([
           readDistrict(getFile,tables.newGame), prepared, loadDrivingSounds(audio,getFile),
           Promise.all([prepared,import('./taxi-model.js')]).then(([p,{loadTaxi}]) =>
             loadTaxi(display.device,p.taxi.materialLayout)),
+          bytes('WAYP2.SPR').then(data => readSpriteBank(data,37)),
         ]);
         district.taxiEye = taxi?.eye;
         district.taxiCenterZ = taxi?.centerZ;
         district.taxiBounds = taxi?.bounds;
         await vga.fade(image.dac, false);
-        return {district, pipelines, sounds, taxi, car: newDriver(district), welcome: true, resolution: Infinity};
+        return {district, pipelines, sounds, taxi, wayfinder, car: newDriver(district), welcome: true, resolution: Infinity};
       } catch (error) {
         message = error.message;
       }
@@ -162,9 +163,10 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
   function report(message) {
     status.textContent = message;
     status.hidden = false;
-    if (message.startsWith('CD audio:')) debugConsole?.write(message);
+    if (message.startsWith('CD audio:') || message.startsWith('Sound FX:')) debugConsole?.write(message);
     clearTimeout(hideStatus);
-    hideStatus = setTimeout(() => { status.hidden = true; },message.startsWith('CD audio:') ? 5000 : 1200);
+    hideStatus = setTimeout(() => { status.hidden = true; },
+      message.startsWith('CD audio:') || message.startsWith('Sound FX:') ? 5000 : 1200);
   }
   function reportMode() { report(view.resolution().join(' × ')); }
   const frameMs = 1000/60;
@@ -233,6 +235,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     effects = createDrivingAudio(audio,session.sounds);
     disc = createDrivingDisc(getAudioTrack,report,session.cdTrack);
     disc.start();
+    if (session.sounds.unavailable.length) report('Sound FX: missing or unreadable '+session.sounds.unavailable.join(', '));
     describe();
     document.addEventListener('keydown', e => {
       if (leaving) return;
@@ -415,17 +418,18 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
           visibleCar.headlights = car.headlights;
+          visibleCar.braking = driving && !session.welcome && (held.has('KeyS') || held.has('ArrowDown'));
           visibleCar.lookYaw = car.lookYaw;
           visibleCar.lookPitch = car.lookPitch;
           visibleCar.chaseYaw = car.chaseYaw;
           visibleCar.chasePitch = car.chasePitch;
+          visibleCar.chaseFloorLook = car.chaseFloorLook;
           visibleCar.chaseDistance = car.chaseDistance;
+          drawInstrument ??= cockpitWayfinder(instrument,session.wayfinder,district,Boolean(session.taxi?.monitor));
+          const updated = drawInstrument(car,driving && !session.welcome);
+          if (updated && session.taxi?.monitor) view.updateWayfinder(instrument);
           view.draw(visibleCar,session.welcome,fade);
-          instrument.hidden = Boolean(car.camera || !car.waypoint || leaving);
-          if (!instrument.hidden) {
-            drawInstrument ??= cockpitWayfinder(instrument,session.map,district);
-            drawInstrument(car,now);
-          }
+          instrument.hidden = Boolean(session.taxi?.monitor || car.camera || !car.waypoint || leaving);
           debugConsole.update(now,fps);
           if (leaving && fade === 0) done();
           else animation = requestAnimationFrame(frame);

@@ -1,6 +1,7 @@
 ; Runtime address: 0004A865
 ; Semantic name: play_indexed_sound_effect (verified)
 ; Evidence: Selects a twelve-byte bank record, configures a sample descriptor and submits it to the audio driver.
+; Descriptor word +10h is 4000h, matching the engine descriptor at 4AC36h.
 
 %macro emit_play_indexed_sound_effect_part_00 0
     %%fragment_start:

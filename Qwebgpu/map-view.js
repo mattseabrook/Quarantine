@@ -42,12 +42,12 @@ function stamp(pixels, pitch, sprite, left, top, transparent) {
 }
 
 export async function loadMap(bytes, district, settings) {
-  const [layers,iconBytes,bays,wayfinderBytes] = await Promise.all([
+  const [layers,iconBytes,bays] = await Promise.all([
     Promise.all([1,2,3,4].map(async number => {
       const name = 'KEMOMAP'+number+'.ZZZ';
       return readOverlay(await bytes(name),name);
     })),
-    bytes('MAPICONS.SPR'), bytes('BAY'+district+'.DAT'), bytes('WAYP2.SPR'),
+    bytes('MAPICONS.SPR'), bytes('BAY'+district+'.DAT'),
   ]);
   const icons = readSpriteBank(iconBytes,139);
   const palette = layers[3].palette;
@@ -68,7 +68,7 @@ export async function loadMap(bytes, district, settings) {
     if (type >= 0 && type < 5) stamp(background,640,icons[127+type],px+2,py+2,false);
     if (type) locations.push({x,y,px,py,type,district:data.getInt16(at+2,true)});
   }
-  return {palette,background,icons,locations,wayfinder:readSpriteBank(wayfinderBytes,37)};
+  return {palette,background,icons,locations};
 }
 
 // 0x30980 uses a 256-entry arctangent table, with exact diagonals handled separately.
@@ -82,30 +82,33 @@ function bearing(dx,dy,table) {
 
 // 0x51710 computes cab-minus-bay deltas in district cells. 0x2E89F
 // rotates that bearing into one of the eight WAYP2 instrument lamps.
-export function cockpitWayfinder(canvas,map,district) {
+export function cockpitWayfinder(canvas,wayfinder,district,crt = false) {
   const settings = district.start.mapDisplay;
   const ctx = canvas.getContext('2d');
   const image = ctx.createImageData(canvas.width,canvas.height);
   const pixels = new Uint8Array(canvas.width*canvas.height);
-  const blit = (i,x,y) => stamp(pixels,canvas.width,map.wayfinder[i],x-254,y-3,true);
-  let previousArrow, previousValue, previousType;
-  return (car,now) => {
+  const blit = (i,x,y) => stamp(pixels,canvas.width,wayfinder[i],x-254,y-3,true);
+  let previousArrow, previousValue, previousType, arrivalPhase = 0;
+  return (car,advance) => {
     const bay = car.waypoint;
-    const dx = Math.trunc(car.x/512)-Math.trunc(bay.x/512)+Math.trunc(settings.offsetX/2);
-    const dy = Math.trunc(car.y/512)-Math.trunc(bay.y/512)+Math.trunc(settings.offsetY/2);
-    const arrow = dx || dy ? Math.floor(((bearing(dx,dy,settings.bearings)+Math.trunc(car.angle/16)+101)%360)/45) :
-      Math.floor(now/100)%8;
-    const value = Math.trunc(settings.distanceScale*Math.hypot(dx,dy));
-    if (arrow === previousArrow && value === previousValue && bay.type === previousType) return;
-    previousArrow = arrow; previousValue = value; previousType = bay.type;
+    const dx = bay ? Math.trunc(car.x/512)-Math.trunc(bay.x/512)+Math.trunc(settings.offsetX/2) : 0;
+    const dy = bay ? Math.trunc(car.y/512)-Math.trunc(bay.y/512)+Math.trunc(settings.offsetY/2) : 0;
+    if (bay && !dx && !dy && advance) arrivalPhase = (arrivalPhase+1)&7;
+    const arrow = !bay ? -1 : dx || dy ?
+      Math.floor(((bearing(dx,dy,settings.bearings)+Math.trunc(car.angle/16)+101)%360)/45) : arrivalPhase;
+    const value = Math.trunc(settings.distanceScale*Math.hypot(dx,dy)), type = bay?.type ?? 0;
+    if (arrow === previousArrow && value === previousValue && type === previousType) return false;
+    previousArrow = arrow; previousValue = value; previousType = type;
     pixels.fill(0);
-    blit(32,262,6);
+    if (!crt) blit(32,262,6);
     settings.arrowPositions.forEach(([x,y],i) => blit(i === arrow ? i : i+8,x,y));
-    const label = [undefined,16,19,18,19][bay.type];
+    const label = [undefined,16,19,18,19][type];
     if (label !== undefined) blit(label,270,22);
     const digits = String(value%10000).padStart(4,'0');
-    [270,274,282,286].forEach((x,i) => blit(22+Number(digits[i]),x,28));
-    blit(21,278,28);
+    if (bay) {
+      [270,274,282,286].forEach((x,i) => blit(22+Number(digits[i]),x,28));
+      blit(21,278,28);
+    }
     for (let i=0; i<pixels.length; i++) {
       const color = 3*pixels[i];
       for (let c=0; c<3; c++) {
@@ -115,7 +118,9 @@ export function cockpitWayfinder(canvas,map,district) {
       image.data[4*i+3] = pixels[i] ? 255 : 0;
     }
     ctx.putImageData(image,0,0);
-    canvas.setAttribute('aria-label','Wayfinder, '+settings.bayNames[bay.type]+', '+digits.slice(0,2)+'.'+digits.slice(2));
+    canvas.setAttribute('aria-label',bay ?
+      'Wayfinder, '+settings.bayNames[type]+', '+digits.slice(0,2)+'.'+digits.slice(2) : 'Wayfinder, no destination');
+    return true;
   };
 }
 

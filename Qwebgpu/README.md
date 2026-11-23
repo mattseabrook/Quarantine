@@ -86,7 +86,7 @@ cloud highlights remain visible overhead as the sky darkens.
 | A, D or Left, Right | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
 | Alt | Suppress steering input and let the wheel center, as in the original keyboard path. |
 | Z | Trigger the original hover impulse to hop over obstacles. |
-| Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab; the vertical boom stops near the cab's bottom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement. |
+| Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab. Continuing upward after the boom reaches the cab's bottom moves the camera closer and tilts it toward the sky; moving back reverses this without changing the saved zoom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
 | V | Toggle the two white headlights. New Game starts with them on. |
 | Mouse wheel | Zoom continuously in chase view, including while the pointer is captured. Roll forward to move closer. The distance is remembered when switching views. |
@@ -114,7 +114,11 @@ Texture processing applies to world materials and the taxi's base-color maps,
 including at native gameplay resolution. The scaler uses a single-pass 45°
 corner rule, not the full xBRz algorithm; taxi upscaling applies when the
 texture is magnified. FXAA applies to the gameplay render only. None of these
-effects filter the title, menus, map, video or separate Wayfinder canvas.
+effects filter the title, menus, map, video or fallback Wayfinder canvas.
+An upper-right counter shows submitted render frames per second, averaged over
+one second. Static menus may show zero; it is not a GPU completion or display
+refresh measurement. Gameplay targets 60 FPS, but the counter does not
+guarantee that the GPU or display presents every submitted frame.
 
 The cockpit pivots above and behind the GLB's steering wheel. The renderer
 uniformly fits the lowest tyre and the modeled eye to SKIPIT's 20-unit
@@ -128,18 +132,39 @@ The two white beams originate at the front faces of the GLB headlamp lenses and
 follow the cab heading in either view. They illuminate indexed roads, walls and
 placed sprites. The lenses and their depth-tested halos are visible from the front.
 Beam range is 850 world units. The lighting model has no headlight shadow map.
+The rear lenses have a dim running glow and become solid red with a brighter
+glow and road spill while the brake/reverse key is held.
 
 The taxi uses all 148 meshes and 28 embedded images at their supplied resolution,
 including the 2048-pixel maps. Materials use their base color, metallic, roughness
 and normal inputs. Window glass blends over the interior and street. The renderer
 generates mipmaps for distant views and uses anisotropic filtering.
+Chrome reflects a 128-pixel world cubemap centered on the cab. Settings controls
+its face-update rate from Off to 60 updates per second; the default is 20 to
+reduce rendering work. Off uses sky reflections instead. All six faces refresh
+when the setting is enabled or changed; later updates can lag during fast
+movement. Reflections do not include the cab or clouds.
 
 The model is *FREE 1950s American Taxi (based on Checker)* by Libau Media. The
 port applies placement and uniform scale at load time. [Original model](https://sketchfab.com/3d-models/free-1950s-american-taxi-based-on-checker-d1b10defaed94a1094419e84ca9b0bf1) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
+If `HD/cars/taxi/commodore_64__computer_full_pack.glb` is present, its monitor
+alone is fitted to the passenger dashboard and aimed at the driver's eye.
+Its housing is shortened to fit inside the cab. Its rectangular
+screen displays the Wayfinder arrows and text using `WAYP2.SPR` and the
+district palette, without the original circular background, and with
+animated CRT-style scanlines and glow. The monitor is placed inside the cab,
+and its screen is dark from behind. The monitor is from *Commodore 64 ||
+Computer (Full Pack)* by dark_igorek. [Original model](https://sketchfab.com/3d-models/commodore-64-computer-full-pack-1f43612fa2d54041bbe2bdff8164c2cd) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 Driving sound uses the installed `ENG7.VOC` loop and `IMPACT.VOC` sample.
-Engine pitch follows the SKIPIT playback step in both directions. The
-head-on wall response requests the impact cue at `0x26489`.
+Engine pitch follows the SKIPIT playback step in both directions. The browser
+reduces engine gain relative to impacts; the original mixer's gain behavior
+remains unresolved.
+The impact sample uses the original indexed-effect rate calculation. The
+head-on wall response requests the impact cue at `0x26489`. Missing or
+unreadable driving samples are reported on entering the cab. Other original
+effects and speech are not yet implemented; gameplay audio is not 1:1.
 
 The city map assembles the four `KEMOMAP*.ZZZ` images and stamps the district's
 `BAYn.DAT` locations using `MAPICONS.SPR`. The cab marker follows the heading
@@ -148,7 +173,11 @@ table in SKIPIT. Arrow keys select the nearest eligible bay within the chosen
 lines scroll in single-pixel steps. The fixed
 instrument strip shows the selected bay type, district and relative distance
 using the retail map font. The selection carries into the cockpit Wayfinder,
-which uses the eight direction lamps and range digits from `WAYP2.SPR`.
+which uses the eight direction lamps, type labels and range digits from
+`WAYP2.SPR`. With the CRT model, the instrument is on its screen in both
+views; without it, the cockpit uses the separate Wayfinder overlay. Manual
+map waypoints are supported, but passenger-driven and other original
+destination modes are not yet simulated.
 
 Gameplay targets **60 presentations per second** with one full-detail path.
 Three workers prepare the map and lookup tables, world geometry and materials,

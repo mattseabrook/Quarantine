@@ -11,6 +11,7 @@
   <main>
     <canvas id="screen" width="320" height="200" tabindex="-1" aria-label="Quarantine game screen" hidden></canvas>
     <canvas id="wayfinder" width="64" height="52" role="img" aria-label="Wayfinder" hidden></canvas>
+    <output class="fps-counter" data-fps aria-label="Rendered frames per second">-- FPS</output>
     <div id="restoreChoice" aria-label="Restore this game?" hidden>
       <button type="button" value="y">Yes</button>
       <button type="button" value="n">No</button>
@@ -19,6 +20,7 @@
     <p id="mouseCaptureHint" role="status" hidden>Click the driving view to capture the mouse</p>
     <a id="uploadMode" href="?upload=1" hidden>Select game folder</a>
     <dialog id="settingsPanel" aria-labelledby="settingsTitle">
+      <output class="fps-counter" data-fps aria-label="Rendered frames per second">-- FPS</output>
       <header class="settings-header">
         <h2 id="settingsTitle">Settings</h2>
         <form method="dialog"><button class="settings-close">Close <kbd>Esc</kbd></button></form>
@@ -35,6 +37,10 @@
         </label>
       </fieldset>
       <fieldset class="settings-group"><legend>Image processing</legend>
+        <div class="volume-row"><label for="reflections">Chrome reflection updates per second</label>
+          <output for="reflections"></output>
+          <input type="range" min="0" max="60" step="5" value="20" id="reflections">
+        </div>
         <div class="volume-row"><label for="upscale">xBR-style texture upscale</label>
           <output for="upscale"></output>
           <input type="range" min="1" max="4" step="1" value="1" id="upscale">

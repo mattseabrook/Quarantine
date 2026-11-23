@@ -74,6 +74,7 @@ game process.
 | `0x41484`, `0x435C4` | Find the floor beneath a probe and trace movement against a BLK wall run |
 | `0x4F640`, `0x51A70` | Read the district's 40-byte BAY records and stamp their icons onto the map |
 | `0x517D4`, `0x4FC48`, `0x51D38` | Select the nearest eligible bay in a direction, pan toward the target, and draw the moving markers |
+| [`0x2E4E0`](src/functions/unresolved/0002e4e0_fun_0002e4e0.asm), `0x51710`, `0x30980` | Select a cockpit Wayfinder target, compute cell deltas and bearing, and update the directional lamp and distance |
 | `0x354F8`, `0x23361`, `0x23552` | Set a map palette entry and draw transparent or opaque sprites to the wide map page |
 | `0x44A30`, `0x44A90` | Load a ZZZ palette and map overlay, and expand packed data using the decoder shared with KPG |
 | `0x2B530`, `0x2C5F8` | Load New Game district assets, including collision and trigger tables |
@@ -90,6 +91,21 @@ to speed reduction. Candidate collection occurs during district rendering at
 `0x40A7C`; its first entry supplies the page and image indices. The class
 data is separate from the per-MAP collision and trigger tables. These
 observations do not establish all collision timing or other class behaviors.
+
+The Wayfinder update at `0x2E868` advances its arrow counter once per update
+when both target deltas are zero. Otherwise it combines the table-based bearing
+with heading and 101 degrees, wraps at 360, and divides by 45. The manual map
+waypoint is only one of several target-selection branches; passenger and other
+game-state branches are not yet implemented in Qwebgpu.
+
+The effect bank at object-3 offset `BF36h` has 44 slots, including
+`HORN.VOC` (15), `IMPACT.VOC` (16), and `ENG7.VOC` (43). Both the
+indexed-effect descriptor at `0x4A8EE` and the engine descriptor at
+`0x4AC36` set word `+10h` to `4000h`; its full mixer interpretation is
+not yet established. The conditional horn request at
+[`0x1A7C0`](src/functions/unresolved/0001a750_fun_0001a750.asm) depends on
+game state not yet mapped in Qwebgpu. Naming coverage is unchanged; these
+audio observations do not establish complete audio behavior or parity.
 
 ## Manual challenge and VGA output
 

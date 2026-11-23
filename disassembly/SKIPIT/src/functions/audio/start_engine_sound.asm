@@ -1,6 +1,7 @@
 ; Runtime address: 0004ABC4
 ; Semantic name: start_engine_sound (verified)
 ; Evidence: starts continuous engine audio unless noengine is set.
+; Bank slot 43 (ENG7.VOC) starts with descriptor word +10h = 4000h and looping enabled.
 ; Analyzer boundary retained; generated losslessly.
 
 %macro emit_start_engine_sound_part_00 0

@@ -77,6 +77,16 @@ export async function createDisplay(canvas) {
   const context = canvas.getContext('webgpu');
   if (!context) throw new Error('WebGPU canvas unavailable.');
   context.configure({device, format, alphaMode: 'opaque'});
+  const fpsCounters = document.querySelectorAll('[data-fps]');
+  let submittedFrames = 0, sampleTime = performance.now();
+  function recordFrame() { submittedFrames++; }
+  setInterval(() => {
+    const now = performance.now(), elapsed = now-sampleTime;
+    const text = Math.round(submittedFrames*1000/elapsed)+' FPS';
+    for (const counter of fpsCounters) counter.textContent = text;
+    submittedFrames = 0;
+    sampleTime = now;
+  },1000);
   const mode = new Uint32Array(4);
   const parameters = new Float32Array(mode.buffer);
   let previousMode, previousBrightness, currentBitmap, hdTexture, hdGroup;
@@ -105,11 +115,12 @@ export async function createDisplay(canvas) {
     pass.draw(3);
     pass.end();
     device.queue.submit([commands.finish()]);
+    recordFrame();
   }
 
   const rgba = new Uint8Array(256 * 4).fill(255);
   return {
-    device, context, format, postprocess,
+    device, context, format, postprocess, recordFrame,
     presentIndexed(frame, dac, pixelsChanged, linear = false, paletteChanged = true, replacement) {
       if (replacement && currentBitmap !== replacement.bitmap) {
         currentBitmap = replacement.bitmap;

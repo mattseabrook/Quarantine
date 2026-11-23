@@ -5,55 +5,75 @@ import {rideHeight} from './cab-dimensions.js';
 // and the headlights face +Z. Place the eye above and behind the wheel.
 const driverEye = [0.42,1.42,0.34];
 const assetURL = new URL('./HD/cars/taxi/taxi.glb',import.meta.url);
+const monitorURL = new URL('./HD/cars/taxi/commodore_64__computer_full_pack.glb',import.meta.url);
 const cache = new WeakMap();
 
-function readGeometry(gltf, binary) {
+function readGeometry(gltf, binary, monitor, eye) {
   function accessor(id, components, componentType) {
     const a = gltf.accessors[id], v = gltf.bufferViews[a.bufferView];
     if (a.componentType !== componentType || (v.byteStride && v.byteStride !== components*4)) {
-      throw new Error('Unexpected vertex layout in taxi.glb');
+      throw new Error('Unexpected vertex layout in vehicle model');
     }
     const ArrayType = componentType === 5126 ? Float32Array : Uint32Array;
     return new ArrayType(binary.buffer,binary.byteOffset+(v.byteOffset ?? 0)+(a.byteOffset ?? 0),a.count*components);
   }
   const pieces = [];
   let vertexCount = 0, indexCount = 0;
-  function visit(id,parent) {
+  function visit(id,parent,selected = !monitor) {
     const node = gltf.nodes[id];
     const matrix = node.matrix ? parent.clone().multiply(new Matrix4().fromArray(node.matrix)) : parent;
-    if (node.mesh !== undefined) {
+    selected ||= node.name === 'video monitor 1702_6';
+    if (selected && node.mesh !== undefined) {
       for (const primitive of gltf.meshes[node.mesh].primitives) {
         const {POSITION,NORMAL,TANGENT,TEXCOORD_0} = primitive.attributes;
         const position = accessor(POSITION,3,5126), indices = accessor(primitive.indices,1,5125);
+        const material = gltf.materials[primitive.material];
+        function textureUV(info) {
+          const id = primitive.attributes['TEXCOORD_'+(info?.texCoord ?? 0)];
+          if (id === undefined) throw new Error('Missing texture coordinates in vehicle model');
+          return accessor(id,2,5126);
+        }
         pieces.push({matrix,position,indices,normal:accessor(NORMAL,3,5126),uv:accessor(TEXCOORD_0,2,5126),
+          metalUV:textureUV(material.pbrMetallicRoughness.metallicRoughnessTexture),
+          normalUV:textureUV(material.normalTexture),
           tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material});
         vertexCount += position.length/3;
         indexCount += indices.length;
       }
     }
-    for (const child of node.children ?? []) visit(child,matrix);
+    for (const child of node.children ?? []) visit(child,matrix,selected);
   }
   for (const root of gltf.scenes[gltf.scene].nodes) visit(root,new Matrix4());
-  const vertices = new Float32Array(vertexCount*12), indices = new Uint32Array(indexCount);
+  if (!pieces.length) throw new Error('No matching geometry in vehicle model');
+  const vertices = new Float32Array((vertexCount+(monitor ? 4 : 0))*16);
+  const indices = new Uint32Array(indexCount+(monitor ? 6 : 0));
   const low = new Vector3(Infinity,Infinity,Infinity), high = new Vector3(-Infinity,-Infinity,-Infinity);
   const p = new Vector3(), n = new Vector3(), t = new Vector3();
-  const draws = [], lensCenters = [];
+  const draws = [], lensCenters = [], rearCandidates = [], screenBounds = new Box3();
   let first = 0, base = 0;
   for (const piece of pieces) {
-    const {matrix,position,normal,tangent,uv} = piece;
+    const {matrix,position,normal,tangent,uv,metalUV,normalUV} = piece;
     const normalMatrix = new Matrix3().getNormalMatrix(matrix), mirrored = matrix.determinant() < 0;
     const center = new Vector3();
     const lens = gltf.materials[piece.material].name === 'headlight_glass' ? new Box3() : null;
+    const rear = gltf.materials[piece.material].name === 'tail_light' ?
+      {box:new Box3(),sides:[new Box3(),new Box3()]} : null;
     for (let i=0; i<position.length/3; i++) {
       p.fromArray(position,3*i).applyMatrix4(matrix);
       low.min(p); high.max(p); center.add(p);
+      if (monitor && gltf.materials[piece.material].name === 'monitor_screen') screenBounds.expandByPoint(p);
       lens?.expandByPoint(p);
+      if (rear) {
+        rear.box.expandByPoint(p);
+        rear.sides[Number(p.x >= 0)].expandByPoint(p);
+      }
       n.fromArray(normal,3*i).applyNormalMatrix(normalMatrix);
       if (tangent) t.fromArray(tangent,4*i).transformDirection(matrix);
       else t.set(0,0,0);
-      const at = (base+i)*12;
+      const at = (base+i)*16;
       vertices.set([p.x,p.y,p.z,-n.x,n.z,-n.y,uv[i*2],uv[i*2+1],-t.x,t.z,-t.y,
-        tangent ? tangent[i*4+3]*(mirrored ? -1 : 1) : 0],at);
+        tangent ? tangent[i*4+3]*(mirrored ? -1 : 1) : 0,
+        metalUV[i*2],metalUV[i*2+1],normalUV[i*2],normalUV[i*2+1]],at);
     }
     for (let i=0; i<piece.indices.length; i+=3) {
       indices[first+i] = base+piece.indices[i];
@@ -65,23 +85,67 @@ function readGeometry(gltf, binary) {
       front.z = lens.max.z;
       lensCenters.push(front);
     }
-    draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
+    if (rear) rearCandidates.push(rear);
+    if (!monitor || gltf.materials[piece.material].name !== 'monitor_screen') {
+      draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
+    }
     first += piece.indices.length;
     base += position.length/3;
+  }
+  if (monitor) {
+    if (screenBounds.isEmpty()) throw new Error('Missing monitor screen in vehicle model');
+    const scale = 6.7/(high.x-low.x), center = screenBounds.getCenter(new Vector3());
+    const mount = [7,12,2.3], depthScale = 0.3;
+    const dx = eye[0]-mount[0], dy = eye[1]-mount[1], dz = eye[2]-mount[2];
+    const horizontal = Math.hypot(dx,dy), distance = Math.hypot(horizontal,dz);
+    const c = -dy/horizontal, s = -dx/horizontal, cp = horizontal/distance, sp = dz/distance;
+    function direction(x,y,z) {
+      const depth = sp*y+cp*z;
+      return [c*x-s*depth,-s*x-c*depth,-cp*y+sp*z];
+    }
+    function fit(x,y,z) {
+      x = (x-center.x)*scale; y = (y-center.y)*scale; z = (z-center.z)*scale;
+      return direction(x,y,z*depthScale).map((value,i) => value+mount[i]);
+    }
+    for (let at=0; at<vertices.length; at+=16) {
+      vertices.set(fit(vertices[at],vertices[at+1],vertices[at+2]),at);
+      vertices.set(direction(-vertices[at+3],-vertices[at+5],vertices[at+4]/depthScale),at+3);
+      vertices.set(direction(-vertices[at+8],-vertices[at+10],vertices[at+9]*depthScale),at+8);
+    }
+    for (const draw of draws) draw.center = fit(draw.center.x,draw.center.y,draw.center.z);
+    const material = gltf.materials.findIndex(m => m.name === 'monitor_screen');
+    const normal = direction(0,0,1), tangent = direction(1,0,0);
+    const z = screenBounds.max.z+0.01;
+    const corners = [
+      [screenBounds.min.x,screenBounds.max.y,0,0], [screenBounds.max.x,screenBounds.max.y,1,0],
+      [screenBounds.max.x,screenBounds.min.y,1,1], [screenBounds.min.x,screenBounds.min.y,0,1],
+    ];
+    corners.forEach(([x,y,u,v],i) => vertices.set([
+      ...fit(x,y,z),...normal,u,v,...tangent,1,u,v,u,v,
+    ],(vertexCount+i)*16));
+    indices.set([vertexCount,vertexCount+1,vertexCount+2,vertexCount,vertexCount+2,vertexCount+3],indexCount);
+    draws.push({first:indexCount,count:6,material,center:fit(center.x,center.y,z)});
+    return {vertices,indices,draws};
   }
   // Match the distance from the lowest tyre to the modeled eye to SKIPIT’s road-to-eye height.
   const scale = rideHeight/(driverEye[1]-low.y), midX = (low.x+high.x)/2, midZ = (low.z+high.z)/2;
   function fit(x,y,z) { return [(midX-x)*scale,(z-midZ)*scale,rideHeight-(y-low.y)*scale]; }
-  for (let at=0; at<vertices.length; at+=12) vertices.set(fit(vertices[at],vertices[at+1],vertices[at+2]),at);
+  for (let at=0; at<vertices.length; at+=16) vertices.set(fit(vertices[at],vertices[at+1],vertices[at+2]),at);
   for (const draw of draws) draw.center = fit(draw.center.x,draw.center.y,draw.center.z);
   const centerZ = rideHeight-(high.y-low.y)*scale/2;
   const headlamps = lensCenters.map(p => fit(p.x,p.y,p.z));
+  rearCandidates.sort((a,b) => a.box.min.z-b.box.min.z);
+  const taillamps = (rearCandidates[0]?.sides ?? []).filter(box => !box.isEmpty()).map(box => {
+    const p = box.getCenter(new Vector3());
+    p.z = box.min.z;
+    return fit(p.x,p.y,p.z);
+  });
   const bounds = {
     left:(midX-high.x)*scale, right:(midX-low.x)*scale,
     back:(low.z-midZ)*scale, front:(high.z-midZ)*scale,
     top:rideHeight-(high.y-low.y)*scale, bottom:rideHeight,
   };
-  return {vertices,indices,draws,eye:fit(...driverEye),centerZ,headlamps,bounds};
+  return {vertices,indices,draws,eye:fit(...driverEye),centerZ,headlamps,taillamps,bounds};
 }
 
 const mipShader = `
@@ -96,19 +160,23 @@ struct Pixel { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   return textureSampleLevel(src,linearSampler,p.uv,0.0);
 }`;
 
-async function uploadTaxi(device,materialLayout) {
-  const response = await fetch(assetURL);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error('Unable to load taxi.glb (HTTP '+response.status+')');
+async function uploadModel(device,materialLayout,url,monitor = false,eye) {
+  const response = await fetch(url);
+  if (response.status === 404) {
+    if (monitor) console.warn('Commodore dashboard model not found:',url.href);
+    return null;
+  }
+  if (!response.ok) throw new Error('Unable to load '+url.pathname+' (HTTP '+response.status+')');
   const file = await response.arrayBuffer(), header = new DataView(file);
   const jsonLength = header.getUint32(12,true);
   if (header.getUint32(0,true) !== 0x46546c67 || header.getUint32(4,true) !== 2 ||
       header.getUint32(16,true) !== 0x4e4f534a || header.getUint32(24+jsonLength,true) !== 0x004e4942) {
-    throw new Error('Expected a binary glTF 2.0 taxi model');
+    throw new Error('Expected a binary glTF 2.0 vehicle model');
   }
   const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(file,20,jsonLength)));
   const binary = new Uint8Array(file,28+jsonLength);
-  const {vertices,indices,draws,eye,centerZ,headlamps,bounds} = readGeometry(gltf,binary);
+  const geometry = readGeometry(gltf,binary,monitor,eye);
+  const {vertices,indices,draws,centerZ,headlamps,taillamps,bounds} = geometry;
   const allocated = [];
   function buffer(data,usage) {
     const b = device.createBuffer({size:data.byteLength,usage:usage|GPUBufferUsage.COPY_DST});
@@ -123,10 +191,15 @@ async function uploadTaxi(device,materialLayout) {
   }
   try {
     const vertexBuffer = buffer(vertices,GPUBufferUsage.VERTEX), indexBuffer = buffer(indices,GPUBufferUsage.INDEX);
-    const srgb = new Set(gltf.materials.flatMap(m => {
+    const used = new Set(draws.map(draw => draw.material));
+    const selectedMaterials = gltf.materials.filter((_,i) => used.has(i));
+    const srgb = new Set(selectedMaterials.flatMap(m => {
       const info = m.pbrMetallicRoughness.baseColorTexture;
       return info ? [gltf.textures[info.index].source] : [];
     }));
+    const neededImages = new Set(selectedMaterials.flatMap(m =>
+      [m.pbrMetallicRoughness.baseColorTexture,m.pbrMetallicRoughness.metallicRoughnessTexture,m.normalTexture]
+        .filter(Boolean).map(info => gltf.textures[info.index].source)));
     const module = device.createShaderModule({code:mipShader});
     const sampler = device.createSampler({minFilter:'linear',magFilter:'linear',mipmapFilter:'linear',
       maxAnisotropy:16,addressModeU:'repeat',addressModeV:'repeat'});
@@ -138,6 +211,7 @@ async function uploadTaxi(device,materialLayout) {
     }
     const images = [];
     for (const [i,image] of gltf.images.entries()) {
+      if (!neededImages.has(i)) continue;
       const v = gltf.bufferViews[image.bufferView], offset = v.byteOffset ?? 0;
       const bitmap = await createImageBitmap(new Blob([binary.subarray(offset,offset+v.byteLength)],{type:image.mimeType}),
         {colorSpaceConversion:'none',premultiplyAlpha:'none'});
@@ -159,7 +233,7 @@ async function uploadTaxi(device,materialLayout) {
           previous = next;
         }
         device.queue.submit([encoder.finish()]);
-        images.push(tex.createView());
+        images[i] = tex.createView();
       } finally { bitmap.close(); }
     }
     function solid(pixel) {
@@ -169,12 +243,15 @@ async function uploadTaxi(device,materialLayout) {
     }
     const white = solid([255,255,255,255]), flat = solid([128,128,255,255]);
     const imageView = (info,fallback) => info ? images[gltf.textures[info.index].source] : fallback;
-    const materials = gltf.materials.map(m => {
+    const materials = gltf.materials.map((m,i) => {
+      if (!used.has(i)) return null;
       const pbr = m.pbrMetallicRoughness;
       const factors = buffer(new Float32Array([...(pbr.baseColorFactor ?? [1,1,1,1]),
         pbr.metallicFactor ?? 1,pbr.roughnessFactor ?? 1,m.normalTexture?.scale ?? 1,
         m.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0,
-        Number(m.name === 'headlight_glass'),0,0,0]),GPUBufferUsage.UNIFORM);
+        Number(m.name === 'headlight_glass'),Number(m.name === 'tail_light'),
+        Number(!monitor && ['aluminium.001','aloominum','Metallic','mirror'].includes(m.name)),
+        monitor ? (m.name === 'monitor_screen' ? 2 : 1) : 0]),GPUBufferUsage.UNIFORM);
       return device.createBindGroup({label:m.name,layout:materialLayout,entries:[
         {binding:0,resource:{buffer:factors}},{binding:1,resource:sampler},
         {binding:2,resource:imageView(pbr.baseColorTexture,white)},
@@ -184,7 +261,7 @@ async function uploadTaxi(device,materialLayout) {
     const opaque = [], glass = [];
     for (const d of draws) (gltf.materials[d.material].alphaMode === 'BLEND' ? glass : opaque).push(d);
     opaque.sort((a,b) => a.material-b.material);
-    return {eye,centerZ,headlamps,bounds,draw(pass,pipeline,transparent,direction) {
+    return {eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
       const parts = transparent ? glass : opaque;
       if (transparent) {
         for (const d of parts) d.depth = d.center.reduce((sum,x,i) => sum+x*direction[i],0);
@@ -205,7 +282,11 @@ async function uploadTaxi(device,materialLayout) {
 }
 
 export function loadTaxi(device,materialLayout) {
-  if (!cache.has(device)) cache.set(device,uploadTaxi(device,materialLayout).catch(error => {
+  if (!cache.has(device)) cache.set(device,(async () => {
+    const taxi = await uploadModel(device,materialLayout,assetURL);
+    if (taxi) taxi.monitor = await uploadModel(device,materialLayout,monitorURL,true,taxi.eye);
+    return taxi;
+  })().catch(error => {
     cache.delete(device);
     throw error;
   }));

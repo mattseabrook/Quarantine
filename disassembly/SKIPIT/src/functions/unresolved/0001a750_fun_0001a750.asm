@@ -1,6 +1,9 @@
 ; Analyzer entry: 0001a750
 ; Analyzer symbol: FUN_0001a750
 ; Boundary and name are provisional until independently verified.
+; 1A7C0 requests bank slot 15 (HORN.VOC) after checks on 137DAh, 1387Ah,
+; 13878h, 1381Ch, 13860h, 13826h and 13834h; 1A7D0 copies F7A0h to 137DAh.
+; The surrounding state has not yet been mapped to Qwebgpu gameplay.
 
 %macro emit_function_0001a750_part_00 0
     %%fragment_start:

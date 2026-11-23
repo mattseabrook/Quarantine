@@ -5,14 +5,15 @@ export async function loadDrivingSounds(context,getFile) {
   async function load(name) {
     try {
       const file = await getFile(name,true);
-      return file && readVoice(context,new Uint8Array(await file.arrayBuffer()),name);
+      if (!file) throw new Error(name+' is missing.');
+      return readVoice(context,new Uint8Array(await file.arrayBuffer()),name);
     } catch (error) {
       console.warn('Unable to load driving effect '+name,error);
       return null;
     }
   }
   const [engine,impact] = await Promise.all([load('ENG7.VOC'),load('IMPACT.VOC')]);
-  return {engine,impact};
+  return {engine,impact,unavailable:[!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC'].filter(Boolean)};
 }
 
 export function createDrivingAudio(context,sounds) {
@@ -65,6 +66,8 @@ export function createDrivingAudio(context,sounds) {
     if (!active || !sounds.impact || context.state !== 'running') return;
     const source = context.createBufferSource();
     source.buffer = sounds.impact;
+    const rate = Math.trunc(sounds.impact.sampleRate);
+    source.playbackRate.value = Math.trunc(rate*65536/11000)*11000/(65536*sounds.impact.sampleRate);
     source.connect(output);
     impacts.add(source);
     source.onended = () => clearImpact(source);

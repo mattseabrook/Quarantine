@@ -1,5 +1,12 @@
 ; Analyzer entry: 0002e4e0
 ; Analyzer symbol: FUN_0002e4e0
+; The cockpit instrument update selects a destination from several game-state
+; branches. The manual map waypoint branch at 0x2E51C uses cell deltas; the
+; other branches include passenger and bay state that Qwebgpu does not yet
+; simulate. At 0x2E868, zero deltas advance DS:7154 by one modulo eight per
+; update. Otherwise 0x2E89F computes a bearing, adds the heading and 101
+; degrees, wraps at 360, and divides by 45 for the illuminated WAYP2 arrow.
+; 0x2E974 computes the distance from the cell deltas.
 ; Boundary and name are provisional until independently verified.
 
 %macro emit_function_0002e4e0_part_00 0

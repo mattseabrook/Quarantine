@@ -11,6 +11,7 @@ export const settings = {
   upscale: Number.isFinite(saved?.upscale) ? Math.min(4,Math.max(1,Math.round(saved.upscale))) : 1,
   fxaa: strength(saved?.fxaa),
   sharpen: strength(saved?.sharpen),
+  reflections: Number.isFinite(saved?.reflections) ? Math.min(60,Math.max(0,Math.round(saved.reflections/5)*5)) : 20,
 };
 
 export const settingsPanel = document.querySelector('#settingsPanel');
@@ -43,12 +44,12 @@ invert.addEventListener('change', () => {
   save();
 });
 for (const [name,id,unit] of [['effects','effectsVolume','%'],['cd','cdVolume','%'],['fov','fov','°'],
-  ['upscale','upscale','×'],['fxaa','fxaa','%'],['sharpen','sharpen','%']]) {
+  ['upscale','upscale','×'],['fxaa','fxaa','%'],['sharpen','sharpen','%'],['reflections','reflections','/s']]) {
   const slider = document.getElementById(id);
   const output = document.querySelector('output[for="' + id + '"]');
   const paint = () => {
     const off = name === 'upscale' ? slider.valueAsNumber === 1 :
-      (name === 'fxaa' || name === 'sharpen') && slider.valueAsNumber === 0;
+      (name === 'fxaa' || name === 'sharpen' || name === 'reflections') && slider.valueAsNumber === 0;
     output.value = off ? 'Off' : slider.value + unit;
     slider.style.setProperty('--level', (slider.valueAsNumber-slider.min)*100/(slider.max-slider.min)+'%');
     slider.setAttribute('aria-valuetext', output.value);

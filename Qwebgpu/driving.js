@@ -23,7 +23,7 @@ export function newDriver({start}) {
     supportZ:start.z, fallSpeed:0, hover:0, headlights:true,
     speed: 0, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
     camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
-    chasePitch: null, chaseDistance: chaseRange.middle};
+    chasePitch: null, chaseFloorLook: 0, chaseDistance: chaseRange.middle};
 }
 
 export function startHover(car) {
@@ -57,7 +57,15 @@ export function turnView(car, movementX, movementY = 0, district) {
       const bottom = (district?.taxiBounds ?? fallbackBounds).bottom;
       const pitch = chasePitch(car,distance,centerZ,bottom);
       const lowest = Math.atan2(centerZ-bottom+2,distance);
-      car.chasePitch = Math.max(lowest,Math.min(chasePitchLimit,pitch+movementY*0.0025));
+      let movement = movementY*0.0025;
+      if (movement > 0 && car.chaseFloorLook > 0) {
+        const returning = Math.min(movement,car.chaseFloorLook);
+        car.chaseFloorLook -= returning;
+        movement -= returning;
+      }
+      const next = pitch+movement;
+      car.chaseFloorLook = Math.min(chasePitchLimit,(car.chaseFloorLook ?? 0)+Math.max(0,lowest-next));
+      car.chasePitch = Math.max(lowest,Math.min(chasePitchLimit,next));
     }
   } else {
     car.lookYaw = Math.max(-cabinYawLimit,Math.min(cabinYawLimit,car.lookYaw+delta));
@@ -425,11 +433,13 @@ export function cameraPose(car, district) {
     return {x:car.x-y*right+x*forward,y:car.y+x*right+y*forward,z:car.z+down,
       fx,fy,angle,pitch:car.lookPitch};
   }
-  const distance = car.chaseDistance;
+  const floorLook = car.chaseFloorLook ?? 0;
+  const distance = chaseRange.near+(car.chaseDistance-chaseRange.near)*Math.exp(-2*floorLook);
   const centerZ = district.taxiCenterZ ?? (cabBody.base-cabBody.height/2);
   const bottom = (district.taxiBounds ?? fallbackBounds).bottom;
-  const pitch = chasePitch(car,distance,centerZ,bottom);
-  const lift = distance*Math.tan(pitch);
+  const orbitPitch = chasePitch(car,car.chaseDistance,centerZ,bottom);
+  const lift = floorLook > 0 ? centerZ-bottom+2 : distance*Math.tan(orbitPitch);
+  const pitch = floorLook > 0 ? Math.max(-chasePitchLimit,Math.atan2(lift,distance)-floorLook) : orbitPitch;
   const targetZ = car.z+centerZ;
   const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift);
   return {x:car.x-fx*distance*clear,y:car.y-fy*distance*clear,z:targetZ-lift*clear,
