@@ -10,7 +10,7 @@ const cache = new WeakMap();
 const wheelNodes = new Set(['Cylinder.004_2','Cylinder.005_3','Cylinder.006_4','Cylinder.007_5',
   'Cylinder.008_6','Cylinder.009_7','Cylinder.010_8','Cylinder.011_9']);
 
-function readGeometry(gltf, binary, monitor, eye) {
+function readGeometry(gltf, binary, monitor) {
   function accessor(id, components, componentType) {
     const a = gltf.accessors[id], v = gltf.bufferViews[a.bufferView];
     if (a.componentType !== componentType || (v.byteStride && v.byteStride !== components*4)) {
@@ -98,13 +98,10 @@ function readGeometry(gltf, binary, monitor, eye) {
   if (monitor) {
     if (screenBounds.isEmpty()) throw new Error('Missing monitor screen in vehicle model');
     const scale = 6.7/(high.x-low.x), center = screenBounds.getCenter(new Vector3());
-    const mount = [7,12,2.3], depthScale = 0.3;
-    const dx = eye[0]-mount[0], dy = eye[1]-mount[1], dz = eye[2]-mount[2];
-    const horizontal = Math.hypot(dx,dy), distance = Math.hypot(horizontal,dz);
-    const c = -dy/horizontal, s = -dx/horizontal, cp = horizontal/distance, sp = dz/distance;
+    const mount = [5.5,12,4], depthScale = 0.3;
+    const c = Math.cos(10*Math.PI/180), s = Math.sin(10*Math.PI/180);
     function direction(x,y,z) {
-      const depth = sp*y+cp*z;
-      return [c*x-s*depth,-s*x-c*depth,-cp*y+sp*z];
+      return [c*x-s*z,-s*x-c*z,-y];
     }
     function fit(x,y,z) {
       x = (x-center.x)*scale; y = (y-center.y)*scale; z = (z-center.z)*scale;
@@ -163,7 +160,7 @@ struct Pixel { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   return textureSampleLevel(src,linearSampler,p.uv,0.0);
 }`;
 
-async function uploadModel(device,materialLayout,url,monitor = false,eye) {
+async function uploadModel(device,materialLayout,url,monitor = false) {
   const response = await fetch(url);
   if (response.status === 404) {
     if (monitor) console.warn('Commodore dashboard model not found:',url.href);
@@ -178,7 +175,7 @@ async function uploadModel(device,materialLayout,url,monitor = false,eye) {
   }
   const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(file,20,jsonLength)));
   const binary = new Uint8Array(file,28+jsonLength);
-  const geometry = readGeometry(gltf,binary,monitor,eye);
+  const geometry = readGeometry(gltf,binary,monitor);
   const {vertices,indices,draws,centerZ,headlamps,taillamps,bounds} = geometry;
   const allocated = [];
   function buffer(data,usage) {
@@ -287,7 +284,7 @@ async function uploadModel(device,materialLayout,url,monitor = false,eye) {
 export function loadTaxi(device,materialLayout) {
   if (!cache.has(device)) cache.set(device,(async () => {
     const taxi = await uploadModel(device,materialLayout,assetURL);
-    if (taxi) taxi.monitor = await uploadModel(device,materialLayout,monitorURL,true,taxi.eye);
+    if (taxi) taxi.monitor = await uploadModel(device,materialLayout,monitorURL,true);
     return taxi;
   })().catch(error => {
     cache.delete(device);

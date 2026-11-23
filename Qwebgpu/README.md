@@ -90,8 +90,8 @@ cloud highlights remain visible overhead as the sky darkens.
 | Enter | Sound the retail cab horn once. |
 | F1, F2, F3 | Look out of the left window, through the windshield, or out of the right window. Each key selects the cockpit and levels the view. |
 | Z | Trigger the original hover impulse to hop over obstacles. |
-| Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab. Continuing upward after the boom reaches the cab's bottom moves the camera closer and tilts it toward the sky; moving back reverses this without changing the saved zoom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement. |
-| F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
+| Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab. Continuing upward after the boom reaches the cab's bottom moves the camera closer and tilts it toward the sky; moving back reverses this without changing the saved zoom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement, only while the cab is moving. |
+| F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit; returning to the cockpit centers and levels the view. |
 | V | Toggle the two white headlights. New Game starts with them on. |
 | Mouse wheel | Zoom continuously in chase view, including while the pointer is captured. Roll forward to move closer. The distance is remembered when switching views. |
 | M | Open the city map. Click a colored bay or use the arrow keys to select one. M or Escape returns to driving. |
@@ -107,7 +107,8 @@ The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 display's native pixel dimensions, subject to the device's texture limit.
 Open Settings with tilde to set horizontal FOV from 60° to 120° in one-degree
 steps. The default is 110° in cockpit and chase. The zoom wheel controls the
-chase boom independently. It shortens when it crosses a wall or deck.
+chase boom independently. It shortens when it crosses a wall or deck, but
+ignores geometry entirely above the cab so overhead gantries do not pull it in.
 At minimum zoom it sits just above the modeled cab bottom; at maximum zoom
 its boom reaches 260 units and twice the former ground-relative height when
 unobstructed.
@@ -155,7 +156,8 @@ The model is *FREE 1950s American Taxi (based on Checker)* by Libau Media. The
 port applies placement and uniform scale at load time. [Original model](https://sketchfab.com/3d-models/free-1950s-american-taxi-based-on-checker-d1b10defaed94a1094419e84ca9b0bf1) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 If `HD/cars/taxi/commodore_64__computer_full_pack.glb` is present, its monitor
-alone is fitted to the passenger dashboard and aimed at the driver's eye.
+alone is fitted to the passenger dashboard, facing the passenger with a
+10-degree turn toward the driver.
 Its housing is shortened to fit inside the cab. Its rectangular
 screen displays the Wayfinder arrows and text using `WAYP2.SPR` and the
 district palette, without the original circular background, and with

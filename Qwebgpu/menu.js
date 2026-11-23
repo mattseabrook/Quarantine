@@ -292,6 +292,9 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
         if (car.camera) {
           car.chaseYaw = car.angle*Math.PI/2880;
           car.chaseIdle = 0;
+        } else {
+          car.lookYaw = 0;
+          car.lookPitch = 0;
         }
         captureMouse();
       }
@@ -426,7 +429,10 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.seatOffset = lastTick.seatOffset+(car.seatOffset-lastTick.seatOffset)*alpha;
           const rotation = (car.angle-lastTick.angle+8640)%5760-2880;
           visibleCar.angle = lastTick.angle + rotation*alpha;
-          if (driving && !session.welcome) updateChaseCamera(car,visibleCar.angle,elapsed);
+          if (driving && !session.welcome) {
+            const moving = car.x !== lastTick.x || car.y !== lastTick.y;
+            updateChaseCamera(car,visibleCar.angle,elapsed,moving);
+          }
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
           visibleCar.headlights = car.headlights;

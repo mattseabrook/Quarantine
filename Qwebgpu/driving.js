@@ -75,8 +75,11 @@ export function turnView(car, movementX, movementY = 0, district) {
   }
 }
 
-export function updateChaseCamera(car, heading, elapsed) {
+export function updateChaseCamera(car, heading, elapsed, moving) {
   if (!car.camera) return;
+  const previous = car.chaseIdle;
+  car.chaseIdle += elapsed;
+  if (!moving) return;
   const target = heading*Math.PI/2880;
   car.chaseYaw ??= target;
   const difference = Math.atan2(Math.sin(target-car.chaseYaw),Math.cos(target-car.chaseYaw));
@@ -85,8 +88,6 @@ export function updateChaseCamera(car, heading, elapsed) {
     car.chaseIdle = 0;
     return;
   }
-  const previous = car.chaseIdle;
-  car.chaseIdle += elapsed;
   const correctionTime = Math.max(0,car.chaseIdle-2)-Math.max(0,previous-2);
   if (correctionTime > 0) car.chaseYaw += difference*(1-Math.exp(-2.5*correctionTime));
 }
@@ -96,9 +97,8 @@ export function zoomChase(car,pixels) {
     car.chaseDistance*Math.exp(pixels*0.0018)));
 }
 
-// The exterior camera is a browser feature. Trace its boom against the
-// actual wall panels and floor triangles, including overhead decks.
-function chaseClearance(district,x,y,z,dx,dy,dz) {
+// Ignore geometry entirely above the cab so overhead structures do not retract the boom.
+function chaseClearance(district,x,y,z,dx,dy,dz,cabTop) {
   const margin = 2/Math.hypot(dx,dy,dz);
   let limit = 1+margin;
   if (dx < 0) limit = Math.min(limit,-x/dx);
@@ -114,6 +114,7 @@ function chaseClearance(district,x,y,z,dx,dy,dz) {
       const block = district.diagnostics.blocks[district.tiles[row*district.width+col]&127];
       const x0 = x-col*512, y0 = y-row*512;
       for (const {segment:[wx,wy,sx,sy,upper,lower]} of block.wallRuns) {
+        if (lower <= cabTop) continue;
         const det = dx*sy-dy*sx;
         if (!det) continue;
         const ax = wx-x0, ay = wy-y0;
@@ -125,7 +126,7 @@ function chaseClearance(district,x,y,z,dx,dy,dz) {
       for (const face of block.faces) {
         if (!face.floor) break; // BLK floors precede the walls.
         const [a] = face.vertices;
-        if (!a) continue;
+        if (!a || a[2] < cabTop) continue;
         const t = (a[2]-z)/dz;
         if (t < 0 || t > limit) continue;
         const px = x0+t*dx, py = y0+t*dy;
@@ -461,7 +462,8 @@ export function cameraPose(car, district) {
   const lift = floorLook > 0 ? centerZ-bottom+2 : distance*Math.tan(orbitPitch);
   const pitch = floorLook > 0 ? Math.max(-chasePitchLimit,Math.atan2(lift,distance)-floorLook) : orbitPitch;
   const targetZ = car.z+centerZ;
-  const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift);
+  const cabTop = car.z+(district.taxiBounds ?? fallbackBounds).top;
+  const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift,cabTop);
   return {x:car.x-fx*distance*clear,y:car.y-fy*distance*clear,z:targetZ-lift*clear,
     fx,fy,angle,pitch};
 }
