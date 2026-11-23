@@ -50,6 +50,8 @@ export function readPromptTables(bytes) {
     welcome: [stringAt(0x9e28), stringAt(0x9e2c)],
     thrust: Array.from({length: 18}, (_, i) => view.getInt16(base + 0x52a8 + i * 2, true)),
     sine: Array.from({length: 1441}, (_, i) => view.getInt16(base + 0x71a8 + i * 2, true)),
+    // Landing selects row four of the 16-word vertical displacement patterns.
+    landingOffsets: Array.from({length:16}, (_,i) => view.getInt16(base+0x8b90+(4*16+i)*2,true)),
     mapDisplay: {
       scaleX: view.getInt32(base + 0xc700, true), scaleY: view.getInt32(base + 0xc704, true),
       divisorX: view.getInt32(base + 0xc708, true), divisorY: view.getInt32(base + 0xc70c, true),

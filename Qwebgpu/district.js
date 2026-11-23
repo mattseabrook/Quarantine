@@ -8,7 +8,7 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
   tiles.forEach((word,i) => {
     const block = word&127;
     if (!block) return;
-    for (const [bx,by,z,radius,color,,intensity=1,sourceRoughness=0] of mesh.blockLights[block*4+((word>>>8)&3)]) {
+    for (const [bx,by,z,radius,color,,intensity=1,sourceRoughness=0,nx=0,ny=0,offset=0] of mesh.blockLights[block*4+((word>>>8)&3)]) {
       const x = (i%width)*512+bx, y = Math.floor(i/width)*512+by;
       const left = Math.max(0,Math.floor((x-radius)/512)), right = Math.min(width-1,Math.floor((x+radius)/512));
       const top = Math.max(0,Math.floor((y-radius)/512)), bottom = Math.min(height-1,Math.floor((y+radius)/512));
@@ -19,15 +19,15 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
           const c = color*3;
           bins.get(cell).push(x,y,z,1/(radius*radius),
             intensity*(palette[c]/63)**2,intensity*(palette[c+1]/63)**2,
-            intensity*(palette[c+2]/63)**2,sourceRoughness);
+            intensity*(palette[c+2]/63)**2,sourceRoughness,nx,ny,offset,0);
         }
       }
     }
   });
   const offsets = new Uint32Array(tiles.length+1);
-  for (let i=0; i<tiles.length; i++) offsets[i+1] = offsets[i]+(bins.get(i)?.length ?? 0)/8;
-  const lights = new Float32Array(8*Math.max(1,offsets[tiles.length]));
-  for (const [cell,values] of bins) lights.set(values,8*offsets[cell]);
+  for (let i=0; i<tiles.length; i++) offsets[i+1] = offsets[i]+(bins.get(i)?.length ?? 0)/12;
+  const lights = new Float32Array(12*Math.max(1,offsets[tiles.length]));
+  for (const [cell,values] of bins) lights.set(values,12*offsets[cell]);
   return {offsets,lights};
 }
 
@@ -37,7 +37,7 @@ export async function readDistrict(getFile, start) {
   const jobs = [
     ['geometry',[start.map,start.blocks,start.bsp,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
       'DATA'+start.district+'.DAT','ANIM'+start.district+'.DAT',...start.wallBanks]],
-    ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT']],
+    ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT','OBJ'+start.district+'.DAT']],
     ['cockpit',['CAB.IMG','LDOOR35.IMG','WHEELSPR.SPR','FONT.SPR']],
   ];
   const workers = [];

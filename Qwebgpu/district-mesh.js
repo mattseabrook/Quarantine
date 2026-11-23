@@ -177,6 +177,12 @@ export function districtMesh(district) {
   });
   const panels = district.banks.map((bank,k) => bank.map((sprite,i) =>
     bulbPanels(district.bankNames[k],i,sprite,district.floor.dac)));
+  let signRed = 0, bestRed = Infinity;
+  for (let i=0; i<256; i++) {
+    const [r,g,b] = district.floor.dac.subarray(i*3,i*3+3);
+    const error = (r-60)**2+(g-5)**2+(b-3)**2;
+    if (error < bestRed) { bestRed = error; signRed = i; }
+  }
   const skyPixels = linearPixels(district.sky.planes);
   const skyIndex = district.panorama ? skyColorIndex(skyPixels,district.floor.dac) : district.flatSkyIndex;
   const sky = pack({width: 320,height: 200,pixels: skyPixels});
@@ -231,37 +237,37 @@ export function districtMesh(district) {
           const both = face.sectioned ? 0 : twoSided;
           const sign = side ? -1 : 1;
           const bulbs = panels[bank][image];
-          const frontAt = 2*(variant*block.variantStride+face.frontMaterial);
-          const sameArt = block.materials[frontAt] === bank && block.materials[frontAt+1] === image;
+          const name = district.bankNames[bank];
+          const omniSign = name === 'KWALL11.SPR' && (image === 9 || image === 10);
           const reverseUV = Boolean(side);
-          if (!side || !sameArt) {
-            for (let repeat=0; repeat<face.repeats; repeat++) {
-              for (const {u,v,color,reach,halo} of bulbs) {
-                const t = (repeat+(reverseUV ? u : 1-u))/face.repeats;
-                const height = Math.abs(c[2]-a[2]);
-                const dx = b[0]-a[0], dy = b[1]-a[1];
-                const outward = sign*2/Math.hypot(dx,dy);
-                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
-                  a[2]+v*(c[2]-a[2]),height*reach,color,height*halo]);
-              }
-              if (district.bankNames[bank] === 'KWALL15.SPR' && image === 7 && bulbs.length) {
-                const t = (repeat+0.5)/face.repeats;
-                const height = Math.abs(c[2]-a[2]);
-                const dx = b[0]-a[0], dy = b[1]-a[1];
-                const outward = sign*2/Math.hypot(dx,dy);
-                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
-                  a[2]+0.45*(c[2]-a[2]),height*5,bulbs[0].color,0,1.4,0.35]);
-              } else if (bulbs.length) {
-                const t = (repeat+0.5)/face.repeats;
-                const height = Math.abs(c[2]-a[2]);
-                const dx = b[0]-a[0], dy = b[1]-a[1];
-                const outward = sign*2/Math.hypot(dx,dy);
-                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
-                  a[2]+0.5*(c[2]-a[2]),Math.max(280,height*4),bulbs[0].color,0,1.4,-0.4]);
+          if (bulbs.length || omniSign) {
+            const dx = b[0]-a[0], dy = b[1]-a[1];
+            const length = Math.hypot(dx,dy), height = Math.abs(c[2]-a[2]);
+            for (const direction of (both ? [1,-1] : [sign])) {
+              const nx = direction*dy/length, ny = -direction*dx/length;
+              for (let repeat=0; repeat<face.repeats; repeat++) {
+                function emit(u,v,reach,color,halo,intensity,roughness,offset) {
+                  const t = (repeat+(direction < 0 ? u : 1-u))/face.repeats;
+                  lights.push([a[0]+t*dx+nx*offset,a[1]+t*dy+ny*offset,
+                    a[2]+v*(c[2]-a[2]),reach,color,halo,intensity,roughness,nx,ny,offset]);
+                }
+                for (const bulb of bulbs) {
+                  emit(bulb.u,bulb.v,height*bulb.reach,bulb.color,height*bulb.halo,1,0,2);
+                }
+                if (omniSign) {
+                  // One broad source per half of the lettering. Stand it off the
+                  // wall so the light grazes the surrounding stone as well as the road.
+                  const reach = Math.min(380,Math.max(200,height*2.5,1.5*length/face.repeats));
+                  emit(0.5,0.12,reach,signRed,0,1.05,0.5,Math.min(44,height*0.32));
+                } else if (name === 'KWALL15.SPR' && image === 7) {
+                  emit(0.5,0.45,height*5,bulbs[0].color,0,1.4,0.35,2);
+                } else {
+                  emit(0.5,0.5,Math.max(280,height*4),bulbs[0].color,0,1.4,-0.4,2);
+                }
               }
             }
           }
-          const flagsAndFace = masked|both|(side*4)|(face.sectioned ? 8 : 0)|(bulbs.length ? 16 : 0)|(faceIndex<<5);
+          const flagsAndFace = masked|both|(side*4)|(face.sectioned ? 8 : 0)|((bulbs.length || omniSign) ? 16 : 0)|(faceIndex<<5);
           for (const j of [0,1,2,0,2,3]) {
             const end = j === 1 || j === 2;
             const u = (reverseUV ? end : !end) ? face.repeats : 0;

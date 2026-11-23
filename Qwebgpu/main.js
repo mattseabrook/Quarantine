@@ -261,10 +261,15 @@ async function playAttract(movie, voice, vga, tables) {
   async function playMovie(data, name, passes, stopped) {
     let palette;
     for (let loop = 0; loop < passes; loop++) {
+      let frameStart = performance.now();
       for (const frame of fliFrames(data, linear, name)) {
         palette = frame.palette;
         display.presentIndexed(linear, palette, true, true, frame.paletteChanged);
-        await wait(frame.duration);
+        // SKIPIT resets the timer after the wait. Frame decoding and VGA
+        // presentation consume part of the next frame's time budget.
+        const remaining = frameStart+frame.duration-performance.now();
+        if (remaining > 0) await wait(remaining);
+        frameStart = performance.now();
         if (stopped()) return palette;
       }
     }

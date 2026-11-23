@@ -82,20 +82,31 @@ function bearing(dx,dy,table) {
 
 // 0x51710 computes cab-minus-bay deltas in district cells. 0x2E89F
 // rotates that bearing into one of the eight WAYP2 instrument lamps.
+function waypointDelta(car, bay, settings) {
+  return [
+    Math.trunc(car.x/512)-Math.trunc(bay.x/512)+Math.trunc(settings.offsetX/2),
+    Math.trunc(car.y/512)-Math.trunc(bay.y/512)+Math.trunc(settings.offsetY/2),
+  ];
+}
+
+export function tickWayfinder(car,settings) {
+  if (!car.waypoint) return;
+  const [dx,dy] = waypointDelta(car,car.waypoint,settings);
+  if (!dx && !dy) car.wayfinderPhase = (car.wayfinderPhase+1)&7;
+}
+
 export function cockpitWayfinder(canvas,wayfinder,district,crt = false) {
   const settings = district.start.mapDisplay;
   const ctx = canvas.getContext('2d');
   const image = ctx.createImageData(canvas.width,canvas.height);
   const pixels = new Uint8Array(canvas.width*canvas.height);
   const blit = (i,x,y) => stamp(pixels,canvas.width,wayfinder[i],x-254,y-3,true);
-  let previousArrow, previousValue, previousType, arrivalPhase = 0;
-  return (car,advance) => {
+  let previousArrow, previousValue, previousType;
+  return car => {
     const bay = car.waypoint;
-    const dx = bay ? Math.trunc(car.x/512)-Math.trunc(bay.x/512)+Math.trunc(settings.offsetX/2) : 0;
-    const dy = bay ? Math.trunc(car.y/512)-Math.trunc(bay.y/512)+Math.trunc(settings.offsetY/2) : 0;
-    if (bay && !dx && !dy && advance) arrivalPhase = (arrivalPhase+1)&7;
+    const [dx,dy] = bay ? waypointDelta(car,bay,settings) : [0,0];
     const arrow = !bay ? -1 : dx || dy ?
-      Math.floor(((bearing(dx,dy,settings.bearings)+Math.trunc(car.angle/16)+101)%360)/45) : arrivalPhase;
+      Math.floor(((bearing(dx,dy,settings.bearings)+Math.trunc(car.angle/16)+101)%360)/45) : car.wayfinderPhase;
     const value = Math.trunc(settings.distanceScale*Math.hypot(dx,dy)), type = bay?.type ?? 0;
     if (arrow === previousArrow && value === previousValue && type === previousType) return false;
     previousArrow = arrow; previousValue = value; previousType = type;

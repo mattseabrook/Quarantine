@@ -12,8 +12,8 @@ export async function loadDrivingSounds(context,getFile) {
       return null;
     }
   }
-  const [engine,impact] = await Promise.all([load('ENG7.VOC'),load('IMPACT.VOC')]);
-  return {engine,impact,unavailable:[!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC'].filter(Boolean)};
+  const [engine,impact,horn] = await Promise.all([load('ENG7.VOC'),load('IMPACT.VOC'),load('HORN.VOC')]);
+  return {engine,impact,horn,unavailable:[!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC',!horn && 'HORN.VOC'].filter(Boolean)};
 }
 
 export function createDrivingAudio(context,sounds) {
@@ -22,17 +22,17 @@ export function createDrivingAudio(context,sounds) {
   output.connect(effectsOutput(context));
   let active = false, closed = false, motor, motorGain;
   let lastSpeed = -1;
-  const impacts = new Set();
+  const oneShots = new Set();
 
-  function clearImpact(source) {
-    impacts.delete(source);
+  function releaseSource(source) {
+    oneShots.delete(source);
     source.onended = null;
     source.disconnect();
   }
 
-  function stopImpacts() {
-    for (const source of impacts) {
-      clearImpact(source);
+  function stopOneShots() {
+    for (const source of oneShots) {
+      releaseSource(source);
       source.stop();
     }
   }
@@ -50,7 +50,7 @@ export function createDrivingAudio(context,sounds) {
       motor.start();
     }
     output.gain.setTargetAtTime(enabled ? 1 : 0,context.currentTime,0.012);
-    if (!enabled) stopImpacts();
+    if (!enabled) stopOneShots();
   }
 
   function update(speed) {
@@ -62,23 +62,23 @@ export function createDrivingAudio(context,sounds) {
     motor.playbackRate.setValueAtTime(step/65536*11000/motor.buffer.sampleRate,context.currentTime);
   }
 
-  function contact() {
-    if (!active || !sounds.impact || context.state !== 'running') return;
+  function playEffect(buffer) {
+    if (!active || !buffer || context.state !== 'running') return;
     const source = context.createBufferSource();
-    source.buffer = sounds.impact;
-    const rate = Math.trunc(sounds.impact.sampleRate);
-    source.playbackRate.value = Math.trunc(rate*65536/11000)*11000/(65536*sounds.impact.sampleRate);
+    source.buffer = buffer;
+    const rate = Math.trunc(buffer.sampleRate);
+    source.playbackRate.value = Math.trunc(rate*65536/11000)*11000/(65536*buffer.sampleRate);
     source.connect(output);
-    impacts.add(source);
-    source.onended = () => clearImpact(source);
+    oneShots.add(source);
+    source.onended = () => releaseSource(source);
     source.start();
   }
 
-  return {setActive,update,contact,close() {
+  return {setActive,update,contact:() => playEffect(sounds.impact),horn:() => playEffect(sounds.horn),close() {
     if (closed) return;
     closed = true;
     active = false;
-    stopImpacts();
+    stopOneShots();
     motor?.stop();
     motor?.disconnect();
     motorGain?.disconnect();

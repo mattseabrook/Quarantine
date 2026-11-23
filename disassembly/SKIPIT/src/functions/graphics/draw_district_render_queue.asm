@@ -2,6 +2,9 @@
 ; Semantic name: draw_district_render_queue
 ; Evidence: Dispatches kind 0 to 0x42730, kind 1 to 0x2DA48, floor tile + 3 to 0x417B0, and wall material pointers to 0x42258 or 0x41D9C.
 
+; Kind-zero origins: -50 < lateral < 50 and 0 < signed-speed direction times depth < 100.
+; Each six-byte contact stores lateral, BLK page and BLK image word (0x40AE7).
+
 %macro emit_draw_district_render_queue_part_00 0
     %%fragment_start:
 draw_district_render_queue:

@@ -37,7 +37,10 @@ const shader = cameraShader + textureFilterShader + `
 @group(0) @binding(2) var colors: texture_2d<f32>;
 @group(0) @binding(3) var cockpit: texture_2d<u32>;
 @group(0) @binding(4) var<storage,read> cellStarts: array<u32>;
-struct Light { positionRadius: vec4f, rgb: vec4f };
+struct Light { positionRadius: vec4f, rgb: vec4f, face: vec4f };
+fn behindEmitter(light:Light, point:vec3f) -> bool {
+  return dot(point.xy-light.positionRadius.xy,light.face.xy)+light.face.z < -0.05;
+}
 @group(0) @binding(5) var<storage,read> lights: array<Light>;
 @group(0) @binding(6) var hdSky: texture_2d<f32>;
 @group(0) @binding(7) var hdCab: texture_2d<f32>;
@@ -151,7 +154,7 @@ fn lightAt(worldPos: vec3f, normal: vec3f, diffuse: bool) -> vec3f {
     let end = cellStarts[bin+1u];
     for (var i=cellStarts[bin]; i<end; i++) {
       let light = lights[i];
-      if (light.rgb.w < 0.0) { continue; }
+      if (light.rgb.w < 0.0 || behindEmitter(light,worldPos)) { continue; }
       let toLamp = light.positionRadius.xyz-worldPos;
       let d2 = dot(toLamp,toLamp);
       let falloff = max(0.0,1.0-d2*light.positionRadius.w);
@@ -436,12 +439,26 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
   let center = vec2f(dot(delta.xy,vec2f(-view.axes.y,view.axes.x)),
                      along*view.axes.w-delta.z*view.axes.z);
   // Bias by half a world unit so the glow sits just in front of its own sprite.
-  let pos = vec4f((center+disc*source.w)*view.scale.xy,view.backdrop.x*(1.0+0.5/max(depth,12.0)),depth);
-  return Halo(pos,disc,paletteIndex,visibility);
+  var extent = source.w*view.scale.xy;
+  var brightness = visibility;
+  if (paletteIndex < 256u && depth > 0.0) {
+    // Small district bulbs otherwise disappear between pixel centers. Spread
+    // their light across a small footprint and fade it as the source recedes.
+    let pixelRadius = extent*view.outputSize.xy/(2.0*depth);
+    let radius = max(pixelRadius,vec2f(1.75));
+    brightness *= min(1.0,pixelRadius.x/radius.x);
+    extent = radius*(2.0*depth)/view.outputSize.xy;
+  }
+  let pos = vec4f(center*view.scale.xy+disc*extent,view.backdrop.x*(1.0+0.5/max(depth,12.0)),depth);
+  return Halo(pos,disc,paletteIndex,brightness);
 }
 @vertex fn haloVertex(@builtin(vertex_index) i:u32, @location(0) source:vec4f,
-                      @location(1) paletteIndex:f32) -> Halo {
-  return projectHalo(i,source,u32(paletteIndex),1.0);
+                      @location(1) paletteIndex:f32, @location(2) normal:vec2f) -> Halo {
+  // Wall bulbs sit two units in front of the textured face. Sprite bulbs have a zero normal.
+  let toEye = view.eye.xy-source.xy+normal*2.0;
+  let cosine = dot(toEye,normal)*inverseSqrt(max(dot(toEye,toEye),1.0));
+  let visibility = select(1.0,smoothstep(0.0,0.08,cosine),any(normal != vec2f(0.0)));
+  return projectHalo(i,source,u32(paletteIndex),visibility);
 }
 @vertex fn headlampHalo(@builtin(vertex_index) i:u32, @builtin(instance_index) lampIndex:u32) -> Halo {
   let lamp = view.headlamps[lampIndex];
@@ -515,8 +532,9 @@ async function buildPipelines({device,format}) {
       {shaderLocation:2,offset:20,format:'float32x4'},{shaderLocation:4,offset:36,format:'float32x3'}]},
     {arrayStride:8,stepMode:'instance',attributes:[{shaderLocation:3,offset:0,format:'float32x2'}]},
     {arrayStride:4,attributes:[{shaderLocation:5,offset:0,format:'uint32'}]}]),
-    pipeline('haloVertex','haloPixel',[{arrayStride:20,stepMode:'instance',attributes:[
-      {shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32'}]}]),
+    pipeline('haloVertex','haloPixel',[{arrayStride:28,stepMode:'instance',attributes:[
+      {shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32'},
+      {shaderLocation:2,offset:20,format:'float32x2'}]}]),
     prepareCloudPipeline(device,cameraShader),prepareTaxiPipelines(device,format,depthFormat,module,bindLayout),
     pipeline('screen','taxiWelcome'),pipeline('headlampHalo','haloPixel'),pipeline('taillampHalo','haloPixel')]);
   return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline};
@@ -549,12 +567,12 @@ function districtDraws({width,tiles,mesh}) {
     const range = mesh.ranges[id];
     if (!range?.count) return;
     const x = i%width*512, y = Math.floor(i/width)*512;
-    const haloFirst = halos.length/5;
-    for (const [bx,by,z,,color,radius] of mesh.blockLights[id]) {
-      if (radius > 0) halos.push(x+bx,y+by,z,radius,color);
+    const haloFirst = halos.length/7;
+    for (const [bx,by,z,,color,radius,,,nx=0,ny=0] of mesh.blockLights[id]) {
+      if (radius > 0) halos.push(x+bx,y+by,z,radius,color,nx,ny);
     }
     if (!groups.has(id)) groups.set(id,{...range,bounds:bounds[id],cells:[]});
-    groups.get(id).cells.push({x,y,haloFirst,haloCount:halos.length/5-haloFirst});
+    groups.get(id).cells.push({x,y,haloFirst,haloCount:halos.length/7-haloFirst});
   });
   return {groups:[...groups.values()],halos:Float32Array.from(halos)};
 }
@@ -576,8 +594,8 @@ function visibleDistrict(groups, camera, sx, sy, instances, halos, visibleHalos)
       instances[2*instanceCount] = cell.x;
       instances[2*instanceCount+1] = cell.y;
       instanceCount++;
-      const begin = cell.haloFirst*5, end = begin+cell.haloCount*5;
-      visibleHalos.set(halos.subarray(begin,end),haloCount*5);
+      const begin = cell.haloFirst*7, end = begin+cell.haloCount*7;
+      visibleHalos.set(halos.subarray(begin,end),haloCount*7);
       haloCount += cell.haloCount;
     }
     if (instanceCount > start) visible.push({first,count,instance:start,instances:instanceCount-start});
@@ -733,7 +751,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     const {visible,instanceCount,haloCount} = visibleDistrict(groups,camera,sx,sy,instanceData,halos,haloData);
     streetStats = {batches:visible.length,instances:instanceCount,vertices:mesh.vertices.length/12};
     if (instanceCount) device.queue.writeBuffer(instances,0,instanceData.subarray(0,instanceCount*2));
-    if (haloCount) device.queue.writeBuffer(haloInstances,0,haloData.subarray(0,haloCount*5));
+    if (haloCount) device.queue.writeBuffer(haloInstances,0,haloData.subarray(0,haloCount*7));
     const heading = car.angle*Math.PI/2880;
     uniforms.set([camera.x,camera.y,camera.z,camera.angle,
       camera.fx,camera.fy,cosPitch,sinPitch,sx,sy,district.width,district.height,
@@ -777,7 +795,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
       if (reflected.instanceCount) device.queue.writeBuffer(reflectionInstances,0,
         reflectionData.subarray(0,reflected.instanceCount*2));
       if (reflected.haloCount) device.queue.writeBuffer(reflectionHalos,0,
-        reflectionHaloData.subarray(0,reflected.haloCount*5));
+        reflectionHaloData.subarray(0,reflected.haloCount*7));
       reflectionUniforms.set(uniforms);
       reflectionUniforms.set([reflectionCamera.x,reflectionCamera.y,reflectionCamera.z,reflectionCamera.angle,
         fx,fy,Math.cos(pitch),Math.sin(pitch),-1,1],0);

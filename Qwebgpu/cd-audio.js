@@ -20,7 +20,9 @@ export function playIntroDisc(getTrack) {
     track++;
     await player.play();
   }
-  function advance() { next().catch(error => console.error('Unable to play intro CD audio:', error)); }
+  function advance() {
+    if (track <= 12) next().catch(error => console.error('Unable to play intro CD audio:', error));
+  }
   player.addEventListener('ended', advance);
   advance();
   return () => {
@@ -34,9 +36,10 @@ export function playIntroDisc(getTrack) {
   };
 }
 
-export function createDrivingDisc(getTrack, report, initialTrack = 2) {
+export function createDrivingDisc(getTrack, report, initialTrack = 3) {
   const player = new Audio();
   const unbindVolume = bindCdVolume(player);
+  // New Game initializes the cursor at 0x1044E and advances it at 0x10453.
   let track = initialTrack, url, generation = 0, closed = false, paused = false;
 
   function release() {

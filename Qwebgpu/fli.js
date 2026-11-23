@@ -10,7 +10,7 @@ export function* fliFrames(bytes, indices, filename) {
   indices.fill(0);
   const palette = new Uint8Array(256 * 3);
   // 0x4B755 waits floor(header speed * 18 / 60) ticks of the DOS timer.
-  const duration = Math.max(1, Math.floor(u16(16) * 18 / 60)) * 1000 / 18.2065;
+  const duration = Math.floor(u16(16) * 18 / 60) * 1000 / 18.2065;
   let offset = 128;
   for (let frame = 0; frame < u16(6); frame++) {
     const end = offset + u32(offset);

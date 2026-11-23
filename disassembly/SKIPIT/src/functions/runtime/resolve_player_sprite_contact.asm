@@ -2,6 +2,9 @@
 ; Semantic name: resolve_player_sprite_contact
 ; Evidence: Dispatches the first projected sprite candidate using its OBJ class; classes 4-9 slide, stop, bounce or slow.
 
+; Entry zero selects the OBJ digit even when that digit falls outside 4..9.
+; Class 8 computes (speed SAR 1) - speed. Class 9 updates the Q8 accumulator only.
+
 %macro emit_resolve_player_sprite_contact_part_00 0
     %%fragment_start:
 resolve_player_sprite_contact:

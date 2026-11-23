@@ -1,3 +1,4 @@
+import {projectedStreetContact,resolveStreetContact} from './street-contact.js';
 import {cabBody, chaseRange, rideHeight} from './cab-dimensions.js';
 
 // DOS 0x1AD00 initializes the keyboard dynamics and 0x1AD98 integrates them.
@@ -20,7 +21,8 @@ function sine(table, angle) {
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
-    supportZ:start.z, fallSpeed:0, hover:0, headlights:true,
+    supportZ:start.z, fallSpeed:0, hover:0, landingStep:0, landingDelay:0, seatOffset:0,
+    wayfinderPhase:0, headlights:true, streetContact:null,
     speed: 0, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
     camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
     chasePitch: null, chaseFloorLook: 0, chaseDistance: chaseRange.middle};
@@ -313,6 +315,9 @@ function followFloor(car,district) {
       car.z = support;
       car.fallSpeed = 0;
       car.hover = 0;
+      // The Z-key impulse sets the retail landing counter to 64. The first
+      // touchdown clears active hover and arms pattern four if the seat is idle.
+      if (!car.landingStep) car.landingStep = 1;
     }
     return;
   }
@@ -329,6 +334,19 @@ function followFloor(car,district) {
 export function driveTick(car, district, keys) {
   const impact = moveCab(car,district,keys);
   followFloor(car,district);
+  const offsets = district.start.landingOffsets;
+  car.seatOffset = 0;
+  if (car.landingStep && offsets) {
+    car.seatOffset = offsets[car.landingStep];
+    if (--car.landingDelay < 0) {
+      car.landingStep++;
+      if (offsets[car.landingStep] === 99 || car.landingStep >= offsets.length) car.landingStep = 0;
+      else car.landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
+    }
+  }
+  const heading = car.angle+(car.yawSlip>>2);
+  const table = district.start.sine;
+  car.streetContact = projectedStreetContact(car,district,sine(table,heading),sine(table,heading+quarter));
   return impact;
 }
 
@@ -394,8 +412,10 @@ function moveCab(car, district, keys) {
   }
   const rotation = heading-oldAngle+(Math.trunc(velocity*car.steering/hz) >> 6);
   const newAngle = wrap(oldAngle+rotation);
-  const dx = (Math.trunc(sine(table,newAngle)*velocity/hz) >> 7)/8;
-  const dy = (Math.trunc(sine(table,newAngle+quarter)*velocity/hz) >> 7)/8;
+  const sin = sine(table,newAngle), cos = sine(table,newAngle+quarter);
+  const step = {velocity,dx:(Math.trunc(sin*velocity/hz)>>7)/8,dy:(Math.trunc(cos*velocity/hz)>>7)/8};
+  resolveStreetContact(car,step,sin,cos,hz);
+  const {dx,dy} = step;
   if (!dx && !dy && !rotation) return 0;
   const hit = sweepCab(car,district,dx,dy,oldAngle,newAngle);
   if (!hit) {
@@ -410,7 +430,7 @@ function moveCab(car, district, keys) {
   const dot = dx*hit.nx+dy*hit.ny;
   const headOn = dot*dot >= 0.5*(dx*dx+dy*dy);
   if (headOn) {
-    car.speed = -(velocity >> 2)*256;
+    car.speed = -(step.velocity >> 2)*256;
     car.skidMode = false;
   } else {
     const tx = (dx-dot*hit.nx)*(1-advance), ty = (dy-dot*hit.ny)*(1-advance);
@@ -430,7 +450,7 @@ export function cameraPose(car, district) {
     const [right,forward,down] = district.taxiEye ?? [0,0,0];
     // The seat rotates with the body. Looking through a door pivots at the driver's eye.
     const heading = car.angle*Math.PI/2880, x = Math.sin(heading), y = Math.cos(heading);
-    return {x:car.x-y*right+x*forward,y:car.y+x*right+y*forward,z:car.z+down,
+    return {x:car.x-y*right+x*forward,y:car.y+x*right+y*forward,z:car.z+down+car.seatOffset,
       fx,fy,angle,pitch:car.lookPitch};
   }
   const floorLook = car.chaseFloorLook ?? 0;

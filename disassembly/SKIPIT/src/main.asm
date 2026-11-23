@@ -322,8 +322,8 @@ bits 32
 %include "src/functions/unresolved/0002ca24_fun_0002ca24.asm"
 %include "src/functions/unresolved/0002ca44_fun_0002ca44.asm"
 %include "src/functions/platform/consume_any_key_press.asm"
-%include "src/functions/unresolved/0002cb64_fun_0002cb64.asm"
-%include "src/functions/unresolved/0002cf0c_fun_0002cf0c.asm"
+%include "src/functions/runtime/handle_driving_action_keys.asm"
+%include "src/functions/runtime/select_cockpit_keyboard_view.asm"
 %include "src/functions/unresolved/0002cff0_fun_0002cff0.asm"
 %include "src/functions/unresolved/0002d2e0_fun_0002d2e0.asm"
 %include "src/functions/unresolved/0002d3a8_fun_0002d3a8.asm"
@@ -352,7 +352,7 @@ bits 32
 %include "src/functions/unresolved/0002e240_fun_0002e240.asm"
 %include "src/functions/unresolved/0002e380_fun_0002e380.asm"
 %include "src/functions/unresolved/0002e424_fun_0002e424.asm"
-%include "src/functions/unresolved/0002e4e0_fun_0002e4e0.asm"
+%include "src/functions/graphics/draw_cockpit_wayfinder.asm"
 %include "src/functions/unresolved/0002eb28_fun_0002eb28.asm"
 %include "src/functions/unresolved/0002eb84_fun_0002eb84.asm"
 %include "src/functions/unresolved/0002ebec_fun_0002ebec.asm"
@@ -400,7 +400,7 @@ bits 32
 %include "src/functions/unresolved/00031d70_fun_00031d70.asm"
 %include "src/functions/unresolved/00031e08_fun_00031e08.asm"
 %include "src/functions/unresolved/00031e80_fun_00031e80.asm"
-%include "src/functions/unresolved/00031eac_fun_00031eac.asm"
+%include "src/functions/runtime/advance_player_vertical_offset.asm"
 %include "src/functions/unresolved/00031f20_fun_00031f20.asm"
 %include "src/functions/runtime/start_player_hover.asm"
 %include "src/functions/unresolved/00031f88_fun_00031f88.asm"
@@ -531,7 +531,7 @@ bits 32
 %include "src/functions/unresolved/0003ff28_fun_0003ff28.asm"
 %include "src/functions/unresolved/0003ff70_fun_0003ff70.asm"
 %include "src/functions/graphics/queue_block_bsp_surfaces.asm"
-%include "src/functions/unresolved/0004043c_fun_0004043c.asm"
+%include "src/functions/graphics/queue_district_map_cell.asm"
 %include "src/functions/graphics/draw_district_render_queue.asm"
 %include "src/functions/unresolved/000412e0_fun_000412e0.asm"
 %include "src/functions/unresolved/0004138c_fun_0004138c.asm"
@@ -709,11 +709,11 @@ bits 32
 %include "src/functions/unresolved/00050150_fun_00050150.asm"
 %include "src/functions/graphics/show_city_map.asm"
 %include "src/functions/unresolved/00051538_fun_00051538.asm"
-%include "src/functions/unresolved/00051710_fun_00051710.asm"
+%include "src/functions/runtime/get_wayfinder_cell_delta.asm"
 %include "src/functions/runtime/select_directional_map_waypoint.asm"
 %include "src/functions/graphics/load_and_draw_map_bays.asm"
 %include "src/functions/graphics/draw_city_map_markers.asm"
-%include "src/functions/unresolved/000523ac_fun_000523ac.asm"
+%include "src/functions/graphics/draw_city_map_status_panel.asm"
 %include "src/functions/unresolved/00052fdc_fun_00052fdc.asm"
 %include "src/functions/unresolved/00052fec_fun_00052fec.asm"
 %include "src/functions/unresolved/00053108_fun_00053108.asm"
@@ -5386,13 +5386,13 @@ emit_data_0294_00047135
 %if ($ - $$) != 0x1CB64
     %error "layout drift at raw 00047164"
 %endif
-emit_function_0002cb64_part_00
+emit_handle_driving_action_keys_part_00
 
 ; raw 0004750C..000475F0 (analyzer-owned function)
 %if ($ - $$) != 0x1CF0C
     %error "layout drift at raw 0004750C"
 %endif
-emit_function_0002cf0c_part_00
+emit_select_cockpit_keyboard_view_part_00
 
 ; raw 000475F0..00047711 (analyzer-owned function)
 %if ($ - $$) != 0x1CFF0
@@ -5692,7 +5692,7 @@ emit_data_0315_00048adf
 %if ($ - $$) != 0x1E4E0
     %error "layout drift at raw 00048AE0"
 %endif
-emit_function_0002e4e0_part_00
+emit_draw_cockpit_wayfinder_part_00
 
 ; raw 00049126..00049128 (explicit data)
 %if ($ - $$) != 0x1EB26
@@ -6208,7 +6208,7 @@ emit_data_0353_0004c4aa
 %if ($ - $$) != 0x21EAC
     %error "layout drift at raw 0004C4AC"
 %endif
-emit_function_00031eac_part_00
+emit_advance_player_vertical_offset_part_00
 
 ; raw 0004C520..0004C543 (analyzer-owned function)
 %if ($ - $$) != 0x21F20
@@ -7618,7 +7618,7 @@ emit_data_0458_0005aa39
 %if ($ - $$) != 0x3043C
     %error "layout drift at raw 0005AA3C"
 %endif
-emit_function_0004043c_part_00
+emit_queue_district_map_cell_part_00
 
 ; raw 0005AB85..0005AF64 (explicit data)
 %if ($ - $$) != 0x30585
@@ -9454,7 +9454,7 @@ emit_data_0586_0006bcb6
 %if ($ - $$) != 0x41710
     %error "layout drift at raw 0006BD10"
 %endif
-emit_function_00051710_part_00
+emit_get_wayfinder_cell_delta_part_00
 
 ; raw 0006BDAE..0006BDD4 (explicit data)
 %if ($ - $$) != 0x417AE
@@ -9496,7 +9496,7 @@ emit_draw_city_map_markers_part_00
 %if ($ - $$) != 0x423AC
     %error "layout drift at raw 0006C9AC"
 %endif
-emit_function_000523ac_part_00
+emit_draw_city_map_status_panel_part_00
 
 ; raw 0006D5D9..0006D5DC (explicit data)
 %if ($ - $$) != 0x42FD9

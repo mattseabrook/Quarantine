@@ -31,8 +31,8 @@ Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
 byte. The 1,019 documented entries comprise 1,014 analyzer-seeded functions and
 one additional wall animation callback in object 1, two gameport routines in
-object 2, and two VGA routines in object 3. Currently 177 entries have descriptive
-roles (17.37%), including probable identifications. The other 842 retain provisional names.
+object 2, and two VGA routines in object 3. Currently 184 entries have descriptive
+roles (18.06%), including probable identifications. The other 835 retain provisional names.
 This measures naming coverage, not verified behavioral coverage or browser parity.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
@@ -74,7 +74,7 @@ game process.
 | `0x41484`, `0x435C4` | Find the floor beneath a probe and trace movement against a BLK wall run |
 | `0x4F640`, `0x51A70` | Read the district's 40-byte BAY records and stamp their icons onto the map |
 | `0x517D4`, `0x4FC48`, `0x51D38` | Select the nearest eligible bay in a direction, pan toward the target, and draw the moving markers |
-| [`0x2E4E0`](src/functions/unresolved/0002e4e0_fun_0002e4e0.asm), `0x51710`, `0x30980` | Select a cockpit Wayfinder target, compute cell deltas and bearing, and update the directional lamp and distance |
+| [`0x2E4E0`](src/functions/graphics/draw_cockpit_wayfinder.asm), [`0x51710`](src/functions/runtime/get_wayfinder_cell_delta.asm), `0x30980` | Select a cockpit Wayfinder target, compute cell deltas and bearing, and update the directional lamp and distance |
 | `0x354F8`, `0x23361`, `0x23552` | Set a map palette entry and draw transparent or opaque sprites to the wide map page |
 | `0x44A30`, `0x44A90` | Load a ZZZ palette and map overlay, and expand packed data using the decoder shared with KPG |
 | `0x2B530`, `0x2C5F8` | Load New Game district assets, including collision and trigger tables |
@@ -85,12 +85,33 @@ game process.
 | `0x56FB8`, `0x575D1` | Start a mixer voice from a sample descriptor and stop the voice by its slot index |
 | `0x57E7D` | Replace the 16.16 playback step at offset `+0x44` of an active mixer voice and return its previous value |
 
-The object-contact jump table at `0x25E18` maps classes 4–6 to
-speed-dependent lateral slides, 7 to a stop, 8 to a partial reversal and 9
-to speed reduction. Candidate collection occurs during district rendering at
-`0x40A7C`; its first entry supplies the page and image indices. The class
-data is separate from the per-MAP collision and trigger tables. These
-observations do not establish all collision timing or other class behaviors.
+| Additional entry | Recovered role |
+| --- | --- |
+| [`0x4043C`](src/functions/graphics/queue_district_map_cell.asm) | Select the block from bits 0–6 and its material list from bits 8–9. The routine checks the 600-entry queue threshold, gathers matching objects and calls the BSP walker. |
+| [`0x523AC`](src/functions/graphics/draw_city_map_status_panel.asm) | Draw the fixed map strip. The selected-bay branch reads the type and district from a 40-byte record and prints range in whole-cell units scaled by ten. |
+| [`0x2CB64`](src/functions/runtime/handle_driving_action_keys.asm) | Consume action key flags. Enter requests sound slot 15 at `0x2CCFA`. Z starts hover with power 32 at `0x2CDC6`. |
+| [`0x2CF0C`](src/functions/runtime/select_cockpit_keyboard_view.asm) | F1, F3 and F2 write +90°, −90° and 0° respectively, then rebuild the view heading at `0x1B340`. |
+| [`0x31EAC`](src/functions/runtime/advance_player_vertical_offset.asm) | Apply a signed word from a 16-word pattern to player Z. The index starts at one. A hold counter governs advancement and entry 99 terminates the pattern. |
+
+On landing, `0x31CEC` decrements the counter initialized from the hover impulse. For the keyboard hop it decrements from 64 to 63. If the displacement sequencer is idle, `0x31D2B` selects row four and starts it at index one. `0x31D3A` clears active hover. The playable offsets at `DS:8C12` are +5, +4, +3, +2, +1, −1, −2, −4, −5, −3, −2 and +2. The next word is 99. The offset hold reload at `0x31F05` uses entry one of the frame-rate table.
+
+At `0x4338B` the loader prepends each BLK placement with its original X, Y
+and Z minus one. `0x3F1F0` distributes the list among BSP leaves. At
+`0x3FF70` each leaf sorts its entries by decreasing squared 3D distance
+before appending them to the queue. The kind-zero sprite projector at
+`0x42782` publishes signed lateral and depth words before its drawing cutoff.
+`0x40A7C` accepts only `-50 < lateral < 50`, with `0 < depth < 100` in
+forward motion or `-100 < depth < 0` in reverse. Each six-byte candidate
+holds lateral position and the placement words at offsets 6 and 8 (page and image).
+
+The driving update calls `0x25E30` immediately before wall contact at
+`0x1B2EA`. Only the first candidate supplies the OBJ digit. The jump table
+at `0x25E18` maps classes 4–6 to lateral displacement using signed speed
+shifted right two, unchanged, or doubled. Class 7 clears speed. Class 8
+sets speed to `(speed >> 1) - speed`. For classes 7 and 8 the special state
+`DS:138C6 == 1` sets `DS:138A0` to 5 instead. Above `0xA00`, class 9
+subtracts 50 times rate-table entry 200 from the speed accumulator, with
+a lower bound of `0x3C00`. Classes outside 4–9 return from this handler.
 
 The Wayfinder update at `0x2E868` advances its arrow counter once per update
 when both target deltas are zero. Otherwise it combines the table-based bearing
@@ -98,14 +119,18 @@ with heading and 101 degrees, wraps at 360, and divides by 45. The manual map
 waypoint is only one of several target-selection branches; passenger and other
 game-state branches are not yet implemented in Qwebgpu.
 
+At New Game, `0x1044E` initializes the CD cursor and requests track 02.
+`0x10453` immediately advances the cursor and requests track 03 through lead-out.
+The return from the options menu at `0x10507` jumps to `0x10458`, beyond
+both requests. This explains why Resume can keep the current playhead.
+
 The effect bank at object-3 offset `BF36h` has 44 slots, including
 `HORN.VOC` (15), `IMPACT.VOC` (16), and `ENG7.VOC` (43). Both the
 indexed-effect descriptor at `0x4A8EE` and the engine descriptor at
 `0x4AC36` set word `+10h` to `4000h`; its full mixer interpretation is
 not yet established. The conditional horn request at
 [`0x1A7C0`](src/functions/unresolved/0001a750_fun_0001a750.asm) depends on
-game state not yet mapped in Qwebgpu. Naming coverage is unchanged; these
-audio observations do not establish complete audio behavior or parity.
+game state not yet mapped in Qwebgpu. The player-triggered horn has an independent input path at `0x2CCFA`.
 
 ## Manual challenge and VGA output
 

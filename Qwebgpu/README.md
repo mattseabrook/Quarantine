@@ -58,6 +58,8 @@ cockpit and door PNGs use alpha for their windows. Screen overlays keep
 their original positions. Sprite banks and the floor texture atlas continue
 to use their retail assets.
 
+The [graphics export](graphics/) contains the 43 retail IMG rasters and 90 individual floor tiles. The [IMG format notes](../README.md#img) describe dimensions, tile numbering and palettes.
+
 ### Night sky and clouds
 
 The renderer recognizes a nearly uniform color across the top of an HD sky
@@ -85,6 +87,8 @@ cloud highlights remain visible overhead as the sky darkens.
 | W, S or Up, Down | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
 | A, D or Left, Right | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
 | Alt | Suppress steering input and let the wheel center, as in the original keyboard path. |
+| Enter | Sound the retail cab horn once. |
+| F1, F2, F3 | Look out of the left window, through the windshield, or out of the right window. Each key selects the cockpit and levels the view. |
 | Z | Trigger the original hover impulse to hop over obstacles. |
 | Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab. Continuing upward after the boom reaches the cab's bottom moves the camera closer and tilts it toward the sky; moving back reverses this without changing the saved zoom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
@@ -203,7 +207,7 @@ including impacts, terrain effects and hover landing interactions,
 is therefore not established as 1:1.
 Hover ascent now stops at reverse-facing overhead floors using the modeled cab
 footprint. SKIPIT instead queries the player position with a 50-unit clearance;
-landing bounces and other hover state remain incomplete.
+the browser applies the retail landing displacement sequence to the driver’s eye. Other vertical effects and their event triggers remain incomplete.
 
 SKIPIT loads per-district collision and trigger tables and initializes a
 128-byte district state array with district-specific values at `0x45340`.
@@ -214,12 +218,18 @@ session; it loads the collision/trigger tables but does not yet implement the
 original district state machine or save payload restoration. Resume retains
 the browser session, not a complete DOS game state.
 
-Placed street sprites are rendered but are not themselves included in the
-browser's wall collision arrays; a separate solid wall run can still block a
-cab at the same location. SKIPIT reads sprite interaction classes from
-`OBJ%d.DAT`: classes 4–6 slide, 7 stops, 8 bounces, and 9 slows the cab.
-The exact render-queue timing and other interaction classes remain to be
-implemented, so fixture behavior is not yet claimed to match SKIPIT.
+The cab collects placed street fixtures in SKIPIT’s 49-cell draw order. Within
+each block it uses the BSP and orders placements in each leaf by decreasing
+distance. A moving cab can contact an origin less than 50 units to either
+side and less than 100 units ahead, or behind when reversing. The first
+qualifying placement supplies the page and image in `OBJ%d.DAT`.
+Classes 4, 5 and 6 give a quarter-, full- or double-speed sideways push.
+Class 7 stops the cab, 8 reverses part of its speed, and 9 changes the
+speed accumulator. The next driving tick consumes the selected contact before
+the wall sweep. The gameplay view stays with the cab during free look and chase.
+If a distributed BSP diverges from the BLK directory, complete blocks keep
+their decoded contact order. Each remaining block uses one distance-ordered
+leaf. Equal-distance contacts use the DOS sort’s tie ordering. [Placement projection and response](street-contact.js).
 
 Settings saves horizontal FOV, vertical mouse inversion, image processing and separate Sound FX and CD audio
 volumes under `qwebgpu.settings` in localStorage for the current browser origin.
@@ -289,9 +299,9 @@ file. The command preserves every sample, including the pregap, and keeps
 existing FLACs. The browser
 uses its native FLAC decoder and starts track02.flac at two seconds during
 INTRO.FLI. Audio continues through the crawl and stops on return to the title.
-Driving starts at track 02 and plays through track 12; selecting a track skips
-its two-second pregap. The selected track is retained when returning from the
-menu, but restarts on resume. The browser-specific previous-track and pause
+New Game starts driving music at track 03. Opening the options menu and
+choosing Resume preserves the playhead and pause state. Selecting a track
+skips its two-second pregap. The browser-specific previous-track and pause
 controls supplement the DOS C key. Missing tracks or playback errors appear
 briefly in the game and in both the game and browser developer consoles.
 
@@ -307,7 +317,7 @@ sequences. Wall contact spans a complete BLK run. The cab follows supporting
 floors using a center probe and four corner probes. Full airborne motion and
 pixel-level parity remain open. [Spawn geometry trace](../README.md#the-structure-east-of-the-new-game-spawn).
 
-The darker street uses the full district sky tint; chrome reflections use a more neutral, subdued version. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The yellow wall panels add a broad warm spill onto the road and cab, with softer highlights on the cab materials. Red wall and overhead bulbs also add a broader cab-only contribution, leaving the street lighting unchanged. The GPU draws world-space halos over the fixtures. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
+The darker street uses the full district sky tint; chrome reflections use a more neutral, subdued version. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The yellow wall panels add a broad warm spill onto the road and cab, with softer highlights on the cab materials. Red wall and overhead bulbs also add a broader cab-only contribution, leaving the street lighting unchanged. Wall halos follow the side carrying the artwork and fade edge-on. The two Omnicorp sign panels cast a broader red light across the façade and pavement. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
 
 ## AVI playback
 

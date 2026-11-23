@@ -63,9 +63,10 @@ function readBlocks(bytes, name) {
     const placements = [];
     for (let at = materials+2*pairs; at < end; at += 12) {
       placements.push({x:signed(at), y:signed(at+2), z:signed(at+4), bank:signed(at+6),
-        image:data.getUint8(at+8), scale:signed(at+10)});
+        image:data.getUint8(at+8), classImage:signed(at+8), scale:signed(at+10)});
     }
-    slots.push({faces, wallRuns, floors, walls, placements, materials: bytes.subarray(materials, materials+pairs/2), variantStride: pairs/16});
+    slots.push({faces, wallRuns, floors, walls, placements, contactTree:placements.slice().reverse(),
+      queueEntries:floors+walls+placements.length, materials: bytes.subarray(materials, materials+pairs/2), variantStride: pairs/16});
     offset = end;
   }
   if (offset !== bytes.length) throw new Error(name + ' has an invalid block payload size.');
@@ -84,13 +85,14 @@ function readPartitions(bytes, blocks) {
     offset += 4;
     return n;
   }
-  for (const {floors,walls} of blocks) {
+  for (const block of blocks) {
+    const {floors,walls,placements} = block;
     const ids = new Int32Array(floors+walls).fill(-1);
     const coplanar = new Map();
-    function branch(items,parent) {
-      if (!items.length) return {node:0,count:0};
+    function branch(items,parent,objects) {
+      if (!items.length) return {node:0,count:0,contacts:objects.length ? objects : null};
       const ordinal = data.getUint8(offset++);
-      if (ordinal === items.length) return {node:0,count:0}; // builder emitted its failure leaf
+      if (ordinal === items.length) return {node:0,count:0,contacts:objects.length ? objects : null}; // builder emitted its failure leaf
       if (ordinal > items.length) throw new Error('Invalid BSP splitter');
       const surface = items[ordinal];
       let nx=0, ny=0, nz=0, plane;
@@ -116,16 +118,29 @@ function readPartitions(bytes, blocks) {
         if (side !== -1 && side !== 1) throw new Error('Invalid BSP partition side');
         (side < 0 ? negative : positive).push(items[i]);
       }
-      const a = branch(negative.reverse(),node), b = branch(positive.reverse(),node);
+      // 0x3F1F0 prepends placements to the same two child lists as the surfaces.
+      const first = [], second = [];
+      for (const obj of objects) {
+        const distance = nx*obj.x+ny*obj.y+nz*(obj.z-1)-plane;
+        (distance > 0 ? first : second).push(obj);
+      }
+      const a = branch(negative.reverse(),node,first.reverse());
+      const b = branch(positive.reverse(),node,second.reverse());
       records[node*8+5] = a.node;
       records[node*8+6] = a.count;
       records[node*8+7] = b.count;
-      return {node,count:1+a.count+b.count};
+      const contacts = a.contacts && b.contacts ? {nx,ny,nz,plane,first:a.contacts,second:b.contacts} :
+        a.contacts ?? b.contacts;
+      return {node,count:1+a.count+b.count,contacts};
     }
     const items = Array.from({length:floors},(_,i) => floors-1-i)
       .concat(Array.from({length:walls},(_,i) => floors+walls-1-i));
-    branch(items,0);
+    const root = branch(items,0,placements.slice().reverse());
     for (const faces of coplanar.values()) if (faces.length === 1) ids[faces[0]] = 0;
+    // Some distributed BSPs end with different BLK records. Complete blocks
+    // already decoded still have a usable contact order if a later record fails.
+    block.contactTree = root.contacts;
+    block.queueEntries = root.count+placements.length;
     owners.push(ids);
   }
   if (offset !== bytes.length) throw new Error('BSP does not match the BLK directory');
@@ -211,10 +226,17 @@ async function prepare(part, files, start) {
     return {value:{cockpit}, transfer:[cockpit.pixels.buffer]};
   }
   if (part === 'tables') {
-    const [map, coll, trig] = await Promise.all([bytes(start.map),bytes('COLLDAT.DAT'),bytes('TRIGDAT.DAT')]);
+    const objName = 'OBJ'+start.district+'.DAT';
+    const [map, coll, trig, obj] = await Promise.all([bytes(start.map),bytes('COLLDAT.DAT'),bytes('TRIGDAT.DAT'),bytes(objName)]);
+    const objectClasses = [];
+    for (const row of new TextDecoder().decode(obj).split(/\r?\n/)) {
+      if (!row || row === 'EOF') break;
+      if (!/^\d+$/.test(row)) throw new Error('Invalid sprite class row in '+objName);
+      objectClasses.push(Uint8Array.from(row,Number));
+    }
     const grid = readMap(map,start.map);
     const collision = tablePage(coll,start.district,'COLLDAT.DAT'), triggers = tablePage(trig,start.district,'TRIGDAT.DAT');
-    return {value:{...grid,collision,triggers}, transfer:[grid.tiles.buffer,collision.buffer,triggers.buffer]};
+    return {value:{...grid,collision,triggers,objectClasses}, transfer:[grid.tiles.buffer,collision.buffer,triggers.buffer]};
   }
   const textureName = 'TEXTURE'+start.district+'.DAT';
   const [records,floor,sky,banks,flags,shadeConfig,map,animations] = await Promise.all([

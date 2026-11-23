@@ -56,6 +56,7 @@ fn cabLitColor(baseColor:vec3f, rough:f32, metal:f32, worldPos:vec3f, n:vec3f, e
     let bin = u32(cell.y*size.x+cell.x);
     for (var i=cellStarts[bin]; i<cellStarts[bin+1u]; i++) {
       let lamp = lights[i];
+      if (behindEmitter(lamp,worldPos)) { continue; }
       let delta = lamp.positionRadius.xyz-worldPos;
       let d2 = dot(delta,delta);
       let falloff = 1.0-d2*lamp.positionRadius.w;

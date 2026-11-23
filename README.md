@@ -5,7 +5,7 @@ Verified DOS target **September 28, 1994 retail `SKIPIT.EXE`**
 [![SKIPIT.EXE NASM rebuild](https://img.shields.io/badge/SKIPIT.EXE%20NASM%20rebuild-passing-2ea44f?logo=nasm)](disassembly/SKIPIT/)
 [![Q2026 Windows build](https://img.shields.io/badge/Q2026%20Windows%20build-passing-2ea44f?logo=vulkan)](Q2026/)
 [![Qwebgpu New Game](https://img.shields.io/badge/Qwebgpu%20New%20Game-awaiting%20playtest-blue)](Qwebgpu/)
-[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-16.68%25-blue)](#disassembly-progress)
+[![Semantic disassembly](https://img.shields.io/badge/semantic%20disassembly-18.06%25-blue)](#disassembly-progress)
 
 This repository contains the canonical lossless NASM reconstruction of the
 retail MS-DOS game executable from *Quarantine*.
@@ -135,6 +135,21 @@ Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/R
 | Save restoration checkpoint | Key or tap | Return to the menu after inspecting a saved-game header. |
 | Settings | Tilde / backquote | Open from the main menu or cab to invert vertical mouselook and adjust Sound FX and CD audio volume. Driving settings also include the developer console. |
 
+### Browser gameplay parity
+
+| Player action | Retail evidence and browser behavior |
+| --- | --- |
+| Sound the horn | Enter consumes scan code `1Ch` and plays effect slot 15 once. Qwebgpu plays the installed `HORN.VOC` through Sound FX. The separate game-state horn at `0x1A7C0` still depends on actor simulation. [Driving action handler](disassembly/SKIPIT/src/functions/runtime/handle_driving_action_keys.asm) |
+| Look out of the cab | F1, F2 and F3 select +90°, 0° and −90° relative to the cab. In Qwebgpu they also return the player to the seat from chase view. Mouse look can continue from each preset. [Keyboard view selection](disassembly/SKIPIT/src/functions/runtime/select_cockpit_keyboard_view.asm) |
+| Open options during a CD track | At `0x1044E` and `0x10453`, New Game initializes the CD cursor and immediately advances it to track 03. Resume returns to `0x10458`, past both requests. The browser keeps one disc player across options, including its playhead and paused state. The intro still uses track 02. [Main loop](disassembly/SKIPIT/src/functions/runtime/game_main.asm) |
+| Land after pressing Z | The key supplies power 32. On touchdown the retail landing path clears active hover and selects displacement pattern four. The browser applies its signed offsets to the driver's eye on simulation ticks. The fitted GLB and its collision footprint stay on the road. [Hover entry](disassembly/SKIPIT/src/functions/runtime/start_player_hover.asm) · [Offset sequencer](disassembly/SKIPIT/src/functions/runtime/advance_player_vertical_offset.asm) |
+| Reach a selected bay | When both cell deltas are zero the eight Wayfinder lamps cycle. The browser advances the lamp on driving updates and keeps its phase across pause and Resume. [Wayfinder](disassembly/SKIPIT/src/functions/graphics/draw_cockpit_wayfinder.asm) |
+| Watch the title or intro FLI | The retail pass counts decode and display work toward the frame interval. The browser waits for the remainder of that interval. The AVI wrapper and CD playback have independent clocks. [FLI pass](disassembly/SKIPIT/src/functions/graphics/play_interruptible_fli_pass.asm) |
+
+**Remaining gameplay differences.** New Game enters the Core. Placed street fixtures use the district’s BLK placements, BSP draw order and OBJ contact classes. The Core stop sign (page 0, image 13) gives the cab a class-5 lateral slide. Traffic, pedestrians, fares, damage, weapons, garages and district progression need their runtime state. The map supports manual destinations. Passenger and mission destinations depend on that missing state. The five-slot menu reads save headers and ends restore at the loading screen. The browser Resume operation retains the current session in memory.
+
+**Deliberate presentation and control choices.** The fixed 35 Hz driving clock, fitted cab footprint, free mouse look, chase camera, adjustable FOV, full-map sightlines, HD art, dynamic lights and persistent settings are browser features. Distant fixed lamps have a small screen-space footprint so their glow fades through subpixel sizes. Ordinary surfaces still use district depth shading and haze.
+
 ### Build status
 
 | Target | Entry point | Last reported result |
@@ -167,8 +182,8 @@ It does not modify or deploy into `MS-DOS/`.
 | Measure | Count | Coverage |
 | --- | ---: | ---: |
 | Executable bytes represented explicitly | 572,501 / 572,501 | 100% |
-| Entries with a descriptive role | 170 / 1,019 | 16.68% |
-| Entries with provisional names | 849 / 1,019 | 83.32% |
+| Entries with a descriptive role | 184 / 1,019 | 18.06% |
+| Entries with provisional names | 835 / 1,019 | 81.94% |
 
 The semantic percentage counts working names supported by evidence, including
 entries marked probable. It measures named function entries. The code-object
@@ -485,7 +500,7 @@ shift it right by 16 to read that same word. Entry 1 resolves to **KCITY**
 | `0x133E4`, `0x3D2C0` | Two strings at pointers `DS:0x9E28` and `DS:0x9E2C` | Draw the player's FONT.SPR glyphs at (96, 88) and (96, 96) before the fade-in |
 
 Qwebgpu fades out WAIT automatically and keeps the district and player state
-when opening the menu. The GPU draws nearby MAP cells as instances of textured
+when opening the menu. The GPU submits visible MAP cells across the district as instances of textured
 BLK geometry. The normal keyboard drive path uses the executable's thrust
 curve and heading table. The browser uses a fixed 35 Hz simulation and
 sweeps the fitted cab bounds against wall runs. Gameplay presentation targets 60 FPS. Three
@@ -583,6 +598,10 @@ the other resource families.
 include full-screen UI, stills, skies, and floor sources. The five
 `MISSIL*.IMG` files use a colon/comma-delimited text grammar. Their fields
 still need runtime tracing.
+
+The [graphics export](Qwebgpu/graphics/) contains all 43 raster images with the original filename stem, for example [KSKY.png](Qwebgpu/graphics/KSKY.png). The 320×200 source pixels scale to 1728×1080 inside a 1920×1080 box. The PNGs retain the source palette and use nearest-neighbor scaling and PNG compression level zero. The game's optional HD replacements live separately in `Qwebgpu/HD/`.
+
+The road textures live in six floor atlases. `FLOOR.IMG`, `JFLOOR.IMG`, `KFLOOR.IMG`, `PFLOOR.IMG`, `SFLOOR.IMG` and `WFLOOR.IMG` each contain five columns and three rows of 64×64 tiles. Tile `i` starts at `(64 × (i % 5), 64 × floor(i / 5))`. The bottom eight scanlines belong to the full image outside the tile grid. Each atlas has a matching export directory with `00.png` through `14.png` in row order. All 90 tiles use an integer 16× enlargement to 1024×1024. [Core road tiles](Qwebgpu/graphics/KFLOOR.IMG/)
 
 | Offset | Type | Field | Meaning |
 | --- | --- | --- | --- |
@@ -813,6 +832,9 @@ Ambient intensity is 0.28 in the shader’s approximate linear-light space.
 | Overhead caution lights | The Core gantry spans use `KWALL6.SPR` images 10 and 11 and `KWALL7.SPR` image 0. Their red bulb arrays sit in masked 64×64 wall textures. | Each array takes its emitter color from its brightest red bulb. Wall endpoints, texture repeats, height and the active MAP variant place its point light and halo. A broader cab-only contribution reaches the car without brightening the street. |
 | Stop sign | Image 13. The electronic STOP lettering at (14, 32) uses palette index 27, pure red. | The panel casts a red pool reaching 1.7 times the sign’s height, with a smaller halo over the lettering. |
 | Wall bulb panels | `KWALL15.SPR` image 7 has a bank of yellow lamps and a red indicator in the lower right. `KWALL4.SPR` image 6 and `KWALL9.SPR` image 0 contain red strips. | The yellow lamps are grouped into four local emitters per panel, plus a broader warm spill reaching five times the panel height. The broad source softens specular highlights on the cab. The red indicator has a shorter reach. Each source sits just outside its wall face and uses the installed district palette. |
+| Omnicorp entrance | `KWALL11.SPR` images 9 and 10 form the two halves of the wordmark. | Each panel casts a diffuse red light from just outside the lettering onto the façade, pavement and passing cab. |
+
+Wall-mounted halos fade at grazing angles and appear from the side that carries the bulb artwork. Each side of a two-sided wall follows its own material and texture orientation. Wall light reaches surfaces on that side of the wall plane.
 
 The surface shader looks up emitters by MAP cell and applies distance falloff and
 surface angle. A second GPU draw projects one halo per visible fixture in world
@@ -838,10 +860,11 @@ heading components by 120 and shifts by 11 to undo the sine table's scale.
 At `0x26392` it traces the displacement between old and new probe positions.
 The wall routine filters by height and uses the first material pair of the BLK
 wall run to check back-side contact (bit 1) and non-solid crossings (bit 3).
-Qwebgpu uses the five probes in forward and reverse and sweeps them across
-steering changes. Its wall response uses a continuous intersection fraction
+Qwebgpu sweeps the fitted cab perimeter and wall endpoints across translation and steering changes. Its wall response uses a continuous intersection fraction
 and a clearance margin. Full DOS damage and airborne contact remain open.
 [Recovered movement routine](disassembly/SKIPIT/src/functions/runtime/resolve_player_wall_contact.asm).
+
+For placed fixtures, `0x40A7C` accepts origins strictly within 50 world units to either side and between 0 and 100 units in the direction of travel. The first eligible placement in draw order supplies its OBJ page and image, including when its class has no driving response. Classes 4–6 push sideways at quarter, full and double speed. Class 7 stops the cab, class 8 reverses part of its speed, and class 9 adjusts the speed accumulator. Qwebgpu collects the candidate at the cab on each 35 Hz driving tick. Free look, chase and reflection views can move independently. [Street contact implementation](Qwebgpu/street-contact.js) · [Retail class dispatch](disassembly/SKIPIT/src/functions/runtime/resolve_player_sprite_contact.asm).
 
 The renderer and collision grid use 512 units per MAP cell. The spawn routine
 shifts cell coordinates left nine bits and adds 256 at `0x31133`–`0x3113F`.
@@ -923,7 +946,7 @@ tables have suffixes `0` through `4`. [Floor and wall loader](disassembly/SKIPIT
 | `DATA%d.DAT` | Annotated colon-delimited text, 88 bytes per file | `0x33EE0` loads district rendering parameters. The first line identifies depth-shade RGB. |
 | `ANIM%d.DAT` | ASCII `s<mask>` followed by ten `:bank,image` pairs | A bank of 99 ends the sequence. The callback at `0x3609C` advances active frames when the current phase has none of the mask bits set. |
 | `OBJ%d.DAT` | Digit rows and an `EOF` marker, with comments after it | Sprite-bank/image interaction classes; SKIPIT's contact handler uses classes 4–9 for sliding, stopping, bouncing and slowing. |
-| `BAY%d.DAT` | Binary files of 560–1,840 bytes, all multiples of 40 | `0x4F640` selects the district garage data. Type is at +0, world X at +4 and world Y at +8. The map uses these fields for bay symbols and directional selection. |
+| `BAY%d.DAT` | Binary files of 560–1,840 bytes, all multiples of 40 | `0x4F640` selects the district garage data. Signed little-endian words at +0 and +2 give type and district. Signed little-endian dwords at +4 and +8 give city-wide X and Y. The map uses these fields for bay symbols and directional selection. |
 | `COLLDAT.DAT`, `TRIGDAT.DAT` | Comma-prefixed decimal integers terminated by a colon | `0x2C6A8` expands the text into words. `0x2C5F8` copies 128 words starting at `district * 128` from each table. |
 | `CONFIG.DAT`, `INPUT.DAT`, `SOUND.DAT` | Retail files are 1, 2, and 2 bytes respectively | Installation settings. Input and sound loads are referenced at `0x30430` and `0x4A435`. |
 

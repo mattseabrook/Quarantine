@@ -5,7 +5,7 @@ import {driveTick, newDriver, startHover, ticksPerSecond, turnView, updateChaseC
 import {createConsole} from './console.js';
 import {loadDrivingSounds,createDrivingAudio} from './driving-audio.js';
 import {createDrivingDisc} from './cd-audio.js';
-import {loadMap, createMapView, cockpitWayfinder} from './map-view.js';
+import {loadMap, createMapView, cockpitWayfinder, tickWayfinder} from './map-view.js';
 import {settings, settingsPanel, openSettings} from './settings.js';
 
 const coldRows = [0, 2, 4];
@@ -199,7 +199,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
   }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. Click to capture the mouse and look around. M opens the map. F switches views. V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape opens the menu.');
+      'W and S drive, A and D steer. Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape opens the menu.');
   }
   function dismiss() { session.welcome = false; describe(); updateMouseCaptureUI(); }
   async function openMap() {
@@ -233,8 +233,12 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     view = createCabView(screen, display, district, session);
     debugConsole = createConsole(screen,district,car,view);
     effects = createDrivingAudio(audio,session.sounds);
-    disc = createDrivingDisc(getAudioTrack,report,session.cdTrack);
-    disc.start();
+    session.reportCd = report;
+    if (!session.disc) {
+      session.disc = createDrivingDisc(getAudioTrack,message => session.reportCd?.(message));
+      session.disc.start();
+    }
+    disc = session.disc;
     if (session.sounds.unavailable.length) report('Sound FX: missing or unreadable '+session.sounds.unavailable.join(', '));
     describe();
     document.addEventListener('keydown', e => {
@@ -277,6 +281,12 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
       if (session.welcome) { dismiss(); captureMouse(); return; }
       if (e.code === 'Escape') { leaving = true; held.clear(); }
       else if (e.code === 'KeyZ' && drivingInput()) startHover(car);
+      else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && drivingInput()) effects.horn();
+      else if (['F1','F2','F3'].includes(e.code) && drivingInput()) {
+        car.camera = 0;
+        car.lookYaw = e.code === 'F1' ? Math.PI/2 : e.code === 'F3' ? -Math.PI/2 : 0;
+        car.lookPitch = 0;
+      }
       else if (e.code === 'KeyF') {
         car.camera = car.camera ? 0 : 1;
         if (car.camera) {
@@ -403,6 +413,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
               if (driveTick(car,district,held)) effects.contact();
+              tickWayfinder(car,district.start.mapDisplay);
               view.tickMaterials();
               accumulator -= dt;
             }
@@ -412,6 +423,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.x = lastTick.x + (car.x-lastTick.x)*alpha;
           visibleCar.y = lastTick.y + (car.y-lastTick.y)*alpha;
           visibleCar.z = lastTick.z + (car.z-lastTick.z)*alpha;
+          visibleCar.seatOffset = lastTick.seatOffset+(car.seatOffset-lastTick.seatOffset)*alpha;
           const rotation = (car.angle-lastTick.angle+8640)%5760-2880;
           visibleCar.angle = lastTick.angle + rotation*alpha;
           if (driving && !session.welcome) updateChaseCamera(car,visibleCar.angle,elapsed);
@@ -426,7 +438,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.chaseFloorLook = car.chaseFloorLook;
           visibleCar.chaseDistance = car.chaseDistance;
           drawInstrument ??= cockpitWayfinder(instrument,session.wayfinder,district,Boolean(session.taxi?.monitor));
-          const updated = drawInstrument(car,driving && !session.welcome);
+          const updated = drawInstrument(car);
           if (updated && session.taxi?.monitor) view.updateWayfinder(instrument);
           view.draw(visibleCar,session.welcome,fade);
           instrument.hidden = Boolean(session.taxi?.monitor || car.camera || !car.waypoint || leaving);
@@ -442,7 +454,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     events.abort();
     if (settingsPanel.open) settingsPanel.close();
     effects?.close();
-    if (disc) { session.cdTrack = disc.currentTrack(); disc.close(); }
+    session.reportCd = null;
     clearTimeout(hideStatus);
     status.hidden = true;
     mouseHint.hidden = true;
@@ -480,42 +492,47 @@ export async function runMainMenu(game) {
     draw();
   }
   screen.focus();
-  for (;;) {
-    draw();
-    const nextInput = () => readKey(screen, {
-      pointerKey: rowAt, pointerHover: position => select(rowAt(position)), activationEvent: 'click',
-    });
-    let input = nextInput();
-    await vga.fade(image.dac, true);
+  try {
     for (;;) {
-      const key = await input;
-      if (key === 'Backquote') {
-        await openSettings(click);
-        draw();
-        screen.focus();
+      draw();
+      const nextInput = () => readKey(screen, {
+        pointerKey: rowAt, pointerHover: position => select(rowAt(position)), activationEvent: 'click',
+      });
+      let input = nextInput();
+      await vga.fade(image.dac, true);
+      for (;;) {
+        const key = await input;
+        if (key === 'Backquote') {
+          await openSettings(click);
+          draw();
+          screen.focus();
+          input = nextInput();
+          continue;
+        }
+        if (typeof key === 'number') { select(key); break; }
+        if (key === 'Enter' || key === ' ') break;
+        const direction = key.toLowerCase();
+        const delta = ['arrowdown', 's'].includes(direction) ? 1 : ['arrowup', 'w'].includes(direction) ? -1 : 0;
+        select(rows[rows.indexOf(selected) + delta]);
         input = nextInput();
+      }
+      if (selected === 4) return;
+      await vga.fade(image.dac, false);
+      if (selected === 2) {
+        if (await loadMenu(game)) await loadFromMenu(game, true);
         continue;
       }
-      if (typeof key === 'number') { select(key); break; }
-      if (key === 'Enter' || key === ' ') break;
-      const direction = key.toLowerCase();
-      const delta = ['arrowdown', 's'].includes(direction) ? 1 : ['arrowup', 'w'].includes(direction) ? -1 : 0;
-      select(rows[rows.indexOf(selected) + delta]);
-      input = nextInput();
+      if (selected === 0) {
+        const next = await loadFromMenu(game, false);
+        if (!next) continue;
+        session?.disc?.close();
+        session = next;
+        rows = [0, 1, 2, 4];
+      }
+      await enterCab(game, session);
+      selected = 1;
     }
-    if (selected === 4) return;
-    await vga.fade(image.dac, false);
-    if (selected === 2) {
-      if (await loadMenu(game)) await loadFromMenu(game, true);
-      continue;
-    }
-    if (selected === 0) {
-      const next = await loadFromMenu(game, false);
-      if (!next) continue;
-      session = next;
-      rows = [0, 1, 2, 4];
-    }
-    await enterCab(game, session);
-    selected = 1;
+  } finally {
+    session?.disc?.close();
   }
 }
