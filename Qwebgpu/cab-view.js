@@ -274,6 +274,16 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
     lit += textureLoad(colors,vec2i(i32(index),0),0).rgb*whiteLight;
   }
   lit += ink*vec3f(1.0,0.015,0.008)*tailLightAt(in.worldPos,in.normalAndLamp.xyz,in.flags == -4.0);
+  if (in.flags == -2.0) {
+    let delta = in.worldPos-view.player.xyz;
+    if (delta.z > 0.0) {
+      let forward = view.outputSize.zw;
+      let local = vec2f(dot(delta.xy,vec2f(-forward.y,forward.x))/30.0,dot(delta.xy,forward)/55.0);
+      let pool = 1.0-smoothstep(0.1,1.0,length(local));
+      let height = 1.0-smoothstep(20.0,120.0,delta.z);
+      lit += max(ink,vec3f(0.06))*vec3f(0.20,0.65,1.0)*(1.3*pool*height);
+    }
+  }
   if (in.flags >= 16.0) {
     if ((ink.r > 0.55 && ink.r > ink.b*2.5 && ink.r >= ink.g) || index == 48u) {
       lit = max(lit,ink);
@@ -473,6 +483,11 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
   return projectHalo(i,vec4f(lamp.xyz,mix(3.0,6.0,lamp.w)),257u,
     smoothstep(0.0,0.65,facing)*mix(0.35,2.4,lamp.w));
 }
+@vertex fn underglowHalo(@builtin(vertex_index) i:u32, @builtin(instance_index) lampIndex:u32) -> Halo {
+  let along = (f32(lampIndex)-1.0)*18.0;
+  let position = view.player.xyz+vec3f(view.outputSize.zw*along,14.0);
+  return projectHalo(i,vec4f(position,10.0),258u,0.8);
+}
 @fragment fn haloPixel(in: Halo) -> @location(0) vec4f {
   let r2 = dot(in.disc,in.disc);
   if (r2 >= 1.0) { discard; }
@@ -480,6 +495,7 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
   let glow = edge*edge*(0.26*exp(-3.0*r2)+0.75*exp(-40.0*r2));
   if (in.paletteIndex == 256u) { return vec4f(vec3f(view.settings.x*glow*in.visibility),0.0); }
   if (in.paletteIndex == 257u) { return vec4f(vec3f(1.0,0.012,0.006)*view.settings.x*glow*in.visibility,0.0); }
+  if (in.paletteIndex == 258u) { return vec4f(vec3f(0.25,0.70,1.0)*view.settings.x*glow*in.visibility,0.0); }
   return vec4f(color(in.paletteIndex).rgb*glow*in.visibility,0.0);
 }`;
 
@@ -514,7 +530,7 @@ async function buildPipelines({device,format}) {
     {binding:16,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}]});
   const layout = device.createPipelineLayout({bindGroupLayouts:[bindLayout]});
   function pipeline(vertex,fragment,buffers=[]) {
-    const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo';
+    const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo' || vertex === 'underglowHalo';
     const blend = halo ? {color:{srcFactor:'one',dstFactor:'one'},
       alpha:{srcFactor:'zero',dstFactor:'one'}} : fragment === 'cabin' ? {
       color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},
@@ -525,7 +541,7 @@ async function buildPipelines({device,format}) {
       depthStencil:{format:depthFormat,depthWriteEnabled:vertex==='world' || fragment==='body',
         depthCompare:halo ? 'greater-equal' : (vertex==='world' || fragment==='body') ? 'greater' : 'always'}});
   }
-  const [skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline] = await Promise.all([
+  const [skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline,underglowPipeline] = await Promise.all([
     pipeline('screen','background'), pipeline('cabVertex','cabin'), pipeline('cabVertex','body'), pipeline('world','material',[
     {arrayStride:48,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x2'},
@@ -536,8 +552,9 @@ async function buildPipelines({device,format}) {
       {shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32'},
       {shaderLocation:2,offset:20,format:'float32x2'}]}]),
     prepareCloudPipeline(device,cameraShader),prepareTaxiPipelines(device,format,depthFormat,module,bindLayout),
-    pipeline('screen','taxiWelcome'),pipeline('headlampHalo','haloPixel'),pipeline('taillampHalo','haloPixel')]);
-  return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline};
+    pipeline('screen','taxiWelcome'),pipeline('headlampHalo','haloPixel'),pipeline('taillampHalo','haloPixel'),
+    pipeline('underglowHalo','haloPixel')]);
+  return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline,underglowPipeline};
 }
 
 // Group MAP cells by their shared block geometry; each group is drawn as instances.
@@ -861,6 +878,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     }
     if (car.camera) {
       pass.setPipeline(session.pipelines.taillampPipeline); pass.draw(6,taillamps.length);
+      pass.setPipeline(session.pipelines.underglowPipeline); pass.draw(6,3);
     }
     if (session.taxi) {
       // Sort the transparent primitives on the camera's forward axis in cab coordinates.

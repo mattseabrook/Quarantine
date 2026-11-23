@@ -7,6 +7,8 @@ const driverEye = [0.42,1.42,0.34];
 const assetURL = new URL('./HD/cars/taxi/taxi.glb',import.meta.url);
 const monitorURL = new URL('./HD/cars/taxi/commodore_64__computer_full_pack.glb',import.meta.url);
 const cache = new WeakMap();
+const wheelNodes = new Set(['Cylinder.004_2','Cylinder.005_3','Cylinder.006_4','Cylinder.007_5',
+  'Cylinder.008_6','Cylinder.009_7','Cylinder.010_8','Cylinder.011_9']);
 
 function readGeometry(gltf, binary, monitor, eye) {
   function accessor(id, components, componentType) {
@@ -19,10 +21,11 @@ function readGeometry(gltf, binary, monitor, eye) {
   }
   const pieces = [];
   let vertexCount = 0, indexCount = 0;
-  function visit(id,parent,selected = !monitor) {
+  function visit(id,parent,selected = !monitor,hidden = false) {
     const node = gltf.nodes[id];
     const matrix = node.matrix ? parent.clone().multiply(new Matrix4().fromArray(node.matrix)) : parent;
     selected ||= node.name === 'video monitor 1702_6';
+    hidden ||= !monitor && wheelNodes.has(node.name);
     if (selected && node.mesh !== undefined) {
       for (const primitive of gltf.meshes[node.mesh].primitives) {
         const {POSITION,NORMAL,TANGENT,TEXCOORD_0} = primitive.attributes;
@@ -36,12 +39,12 @@ function readGeometry(gltf, binary, monitor, eye) {
         pieces.push({matrix,position,indices,normal:accessor(NORMAL,3,5126),uv:accessor(TEXCOORD_0,2,5126),
           metalUV:textureUV(material.pbrMetallicRoughness.metallicRoughnessTexture),
           normalUV:textureUV(material.normalTexture),
-          tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material});
+          tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material,hidden});
         vertexCount += position.length/3;
         indexCount += indices.length;
       }
     }
-    for (const child of node.children ?? []) visit(child,matrix,selected);
+    for (const child of node.children ?? []) visit(child,matrix,selected,hidden);
   }
   for (const root of gltf.scenes[gltf.scene].nodes) visit(root,new Matrix4());
   if (!pieces.length) throw new Error('No matching geometry in vehicle model');
@@ -86,7 +89,7 @@ function readGeometry(gltf, binary, monitor, eye) {
       lensCenters.push(front);
     }
     if (rear) rearCandidates.push(rear);
-    if (!monitor || gltf.materials[piece.material].name !== 'monitor_screen') {
+    if (!piece.hidden && (!monitor || gltf.materials[piece.material].name !== 'monitor_screen')) {
       draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
     }
     first += piece.indices.length;

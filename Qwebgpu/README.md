@@ -139,8 +139,10 @@ Beam range is 850 world units. The lighting model has no headlight shadow map.
 The rear lenses have a dim running glow and become solid red with a brighter
 glow and road spill while the brake/reverse key is held.
 
-The taxi uses all 148 meshes and 28 embedded images at their supplied resolution,
-including the 2048-pixel maps. Materials use their base color, metallic, roughness
+The taxi hides its wheel and hub assemblies while preserving the original model
+fit and collision bounds. A baby-blue hover glow follows the cab and lights the
+ground below it. The model uses its 28 embedded images at their supplied
+resolution, including the 2048-pixel maps. Materials use their base color, metallic, roughness
 and normal inputs. Window glass blends over the interior and street. The renderer
 generates mipmaps for distant views and uses anisotropic filtering.
 Chrome reflects a 128-pixel world cubemap centered on the cab. Settings controls
