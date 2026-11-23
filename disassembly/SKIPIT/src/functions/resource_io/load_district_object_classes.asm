@@ -1,10 +1,10 @@
-; Analyzer entry: 0002bc70
-; Analyzer symbol: FUN_0002bc70
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0002BC70
+; Semantic name: load_district_object_classes
+; Evidence: Reads OBJ%d.DAT digits into object-page arrays and stores their pointers at DS:F120.
 
-%macro emit_function_0002bc70_part_00 0
+%macro emit_load_district_object_classes_part_00 0
     %%fragment_start:
-function_0002bc70:
+load_district_object_classes:
     %%insn_0002bc70_2BC70:
     push ebx ; 0002BC70 53
     %if ($ - %%insn_0002bc70_2BC70) > 1

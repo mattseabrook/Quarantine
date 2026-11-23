@@ -25,10 +25,96 @@ fn cabDirection(local:vec3f) -> vec3f {
                     cabDirection(normal),vec4f(cabDirection(tangent.xyz),tangent.w));
 }
 
+fn cabLitColor(baseColor:vec3f, rough:f32, metal:f32, worldPos:vec3f, n:vec3f, eye:vec3f) -> vec3f {
+  let nv = clamp(dot(n,eye),0.001,1.0);
+  let f0 = mix(vec3f(0.04),baseColor,metal);
+  let diffuse = baseColor*(1.0-metal);
+  let reflected = reflect(-eye,n);
+  let skyDir = vec3f(reflected.x,-reflected.z,reflected.y);
+  let skyLight = textureSampleLevel(stars,skySampler,skyDir,0.0).r;
+  let rim = pow(1.0-nv,5.0);
+  let envFresnel = f0+(max(vec3f(1.0-rough),f0)-f0)*rim;
+  let sky = view.ambient.rgb;
+  let skyFacing = smoothstep(-0.25,0.75,skyDir.y);
+  let neutralSky = vec3f(dot(sky,vec3f(0.2126,0.7152,0.0722)));
+  let reflectionSky = mix(sky,mix(neutralSky,sky,0.25)*0.7,metal);
+  let reflection = reflectionSky*(0.05+0.70*skyFacing+skyLight*0.35*(1.0-rough));
+  var linear = diffuse*sky*(0.065+0.16*clamp(-n.z,0.0,1.0))+reflection*envFresnel;
+
+  // Evaluate each nearby fixture in world space. Paint, glass and chrome
+  // share the light position and color but retain their authored roughness.
+  let cell = vec2i(floor(worldPos.xy/512.0));
+  let size = vec2i(view.scale.zw);
+  if (all(cell >= vec2i(0)) && all(cell < size)) {
+    let bin = u32(cell.y*size.x+cell.x);
+    for (var i=cellStarts[bin]; i<cellStarts[bin+1u]; i++) {
+      let lamp = lights[i];
+      let delta = lamp.positionRadius.xyz-worldPos;
+      let d2 = dot(delta,delta);
+      let falloff = 1.0-d2*lamp.positionRadius.w;
+      let l = delta*inverseSqrt(max(d2,0.0001));
+      let nl = dot(n,l);
+      if (falloff <= 0.0) { continue; }
+      let radiance = lamp.rgb.xyz*(2.0*falloff*falloff);
+      if (lamp.rgb.w < 0.0) { linear += radiance*diffuse*0.2; }
+      if (nl <= 0.0) { continue; }
+      let halfway = l+eye;
+      let h = halfway*inverseSqrt(max(dot(halfway,halfway),0.0001));
+      let nh = max(0.0,dot(n,h));
+      let lightRoughness = max(rough,abs(lamp.rgb.w));
+      let a2 = pow(lightRoughness,4.0);
+      let k = (lightRoughness+1.0)*(lightRoughness+1.0)/8.0;
+      let d = nh*nh*(a2-1.0)+1.0;
+      let distribution = a2/max(3.14159*d*d,0.0000001);
+      let visibility = 0.25/((nv*(1.0-k)+k)*(nl*(1.0-k)+k));
+      let fresnel = f0+(1.0-f0)*pow(1.0-clamp(dot(eye,h),0.0,1.0),5.0);
+      let incident = radiance*nl;
+      linear += incident*(diffuse*(1.0-fresnel)+fresnel*distribution*visibility);
+    }
+  }
+  return pow(max(linear,vec3f(0.0)),vec3f(1.0/2.2))*view.settings.x;
+}
+
+fn taxiTexel(p:vec2i,fallback:vec3f) -> vec3f {
+  let size = vec2i(textureDimensions(baseMap));
+  let wrapped = ((p % size)+size) % size;
+  let sample = textureLoad(baseMap,wrapped,0);
+  return select(fallback,sample.rgb,sample.a > 0.0);
+}
 @fragment fn taxiPixel(p:TaxiVertex) -> @location(0) vec4f {
-  let base = textureSample(baseMap,paintSampler,p.uv)*finish.base;
+  let dx = dpdx(p.uv);
+  let dy = dpdy(p.uv);
+  let original = textureSample(baseMap,paintSampler,p.uv);
   let mr = textureSample(metalRoughMap,paintSampler,p.uv);
   let mapped = textureSample(normalMap,paintSampler,p.uv).xyz*2.0-1.0;
+  var baseColor = original.rgb;
+  let size = vec2f(textureDimensions(baseMap));
+  let upscale = view.textureEffects.x;
+  let sharpness = view.textureEffects.y;
+  if (upscale > 1.0 && max(length(dx*size),length(dy*size)) <= 1.0) {
+    let texel = p.uv*size;
+    let at = vec2i(floor(texel));
+    let f = (floor(fract(texel)*upscale)+0.5)/upscale;
+    let side = vec2i(select(-1,1,f.x>=0.5),select(-1,1,f.y>=0.5));
+    let center = taxiTexel(at,original.rgb);
+    let c = array<vec3f,12>(center,
+      taxiTexel(at+vec2i(side.x,0),center),taxiTexel(at+vec2i(0,side.y),center),
+      taxiTexel(at+side,center),taxiTexel(at+vec2i(side.x,-side.y),center),
+      taxiTexel(at+vec2i(-side.x,side.y),center),taxiTexel(at+vec2i(2*side.x,0),center),
+      taxiTexel(at+vec2i(0,2*side.y),center),taxiTexel(at+vec2i(2*side.x,side.y),center),
+      taxiTexel(at+vec2i(side.x,2*side.y),center),taxiTexel(at+vec2i(-side.x,0),center),
+      taxiTexel(at+vec2i(0,-side.y),center));
+    baseColor = textureEdge(c,f,side);
+  }
+  if (sharpness > 0.0) {
+    let step = max(1.0/size,max(abs(dx),abs(dy)));
+    let n = textureSampleGrad(baseMap,paintSampler,p.uv+vec2f(0,-step.y),dx,dy).rgb;
+    let s = textureSampleGrad(baseMap,paintSampler,p.uv+vec2f(0,step.y),dx,dy).rgb;
+    let w = textureSampleGrad(baseMap,paintSampler,p.uv+vec2f(-step.x,0),dx,dy).rgb;
+    let e = textureSampleGrad(baseMap,paintSampler,p.uv+vec2f(step.x,0),dx,dy).rgb;
+    baseColor = clamp(baseColor+textureSharpen(original.rgb,n,s,w,e,sharpness)-original.rgb,vec3f(0),vec3f(1));
+  }
+  let base = vec4f(baseColor,original.a)*finish.base;
   let rough = clamp(mr.g*finish.surface.y,0.045,1.0);
   let metal = clamp(mr.b*finish.surface.x,0.0,1.0);
   let eye = normalize(view.eye.xyz-p.world);
@@ -39,29 +125,8 @@ fn cabDirection(local:vec3f) -> vec3f {
     n = normalize(n*mapped.z+(t*mapped.x+b*mapped.y)*finish.surface.z);
   }
   if (dot(n,eye)<0.0) { n = -n; }
-  let toLight = normalize(vec3f(-0.45,0.22,-0.86));
-  let h = normalize(eye+toLight);
-  let nv = max(0.001,dot(n,eye));
-  let nl = max(0.0,dot(n,toLight));
-  let nh = max(0.0,dot(n,h));
-  let f0 = mix(vec3f(0.04),base.rgb,metal);
-  let fresnel = f0+(1.0-f0)*pow(1.0-clamp(dot(eye,h),0.0,1.0),5.0);
-  let a2 = pow(rough,4.0);
-  let d = nh*nh*(a2-1.0)+1.0;
-  let distribution = a2/(3.14159*max(d*d,0.0000001));
-  let k = (rough+1.0)*(rough+1.0)/8.0;
-  let visibility = 0.25/max((nv*(1.0-k)+k)*(nl*(1.0-k)+k),0.001);
-  let diffuse = base.rgb*(1.0-metal)*(1.0-fresnel);
-  let reflected = reflect(-eye,n);
-  let skyDir = vec3f(reflected.x,-reflected.z,reflected.y);
-  let skyLight = textureSampleLevel(stars,skySampler,skyDir,0.0).r;
-  let env = mix(vec3f(0.065),vec3f(0.22)+0.40*view.skyTint.rgb,smoothstep(-0.3,0.45,skyDir.y));
-  let reflection = env+vec3f(skyLight*0.20*(1.0-rough));
-  let rim = pow(1.0-nv,5.0);
-  let envFresnel = f0+(max(vec3f(1.0-rough),f0)-f0)*rim;
-  let street = lightAt(p.world,n,true);
-  let linear = diffuse*(0.16+street+0.52*nl)+fresnel*distribution*visibility*nl*0.55+reflection*envFresnel;
-  let rgb = pow(max(linear,vec3f(0.0)),vec3f(1.0/2.2))*view.settings.x;
+  let rim = pow(1.0-clamp(dot(n,eye),0.0,1.0),5.0);
+  let rgb = cabLitColor(base.rgb,rough,metal,p.world,n,eye);
   // These thin glass primitives have no authored volume. Composite their tint
   // and grazing reflection over the street, seats and other lamps behind them.
   let alpha = mix(base.a,base.a*(0.42+0.58*rim),finish.surface.w);

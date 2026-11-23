@@ -1,11 +1,11 @@
 import {readSpriteBank} from './indexed-screen.js';
 import {readDistrict} from './district.js';
 import {createCabView, prepareCabPipelines} from './cab-view.js';
-import {driveTick, newDriver, ticksPerSecond, turnView, zoomChase} from './driving.js';
+import {driveTick, newDriver, startHover, ticksPerSecond, turnView, updateChaseCamera, zoomChase} from './driving.js';
 import {createConsole} from './console.js';
 import {loadDrivingSounds,createDrivingAudio} from './driving-audio.js';
 import {createDrivingDisc} from './cd-audio.js';
-import {loadMap, createMapView} from './map-view.js';
+import {loadMap, createMapView, cockpitWayfinder} from './map-view.js';
 import {settings, settingsPanel, openSettings} from './settings.js';
 
 const coldRows = [0, 2, 4];
@@ -134,6 +134,7 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, tables, a
         ]);
         district.taxiEye = taxi?.eye;
         district.taxiCenterZ = taxi?.centerZ;
+        district.taxiBounds = taxi?.bounds;
         await vga.fade(image.dac, false);
         return {district, pipelines, sounds, taxi, car: newDriver(district), welcome: true, resolution: Infinity};
       } catch (error) {
@@ -156,6 +157,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
   const events = new AbortController(), options = {signal: events.signal};
   const held = new Set(), dt = 1/ticksPerSecond;
   const status = document.querySelector('#checkpoint');
+  const mouseHint = document.querySelector('#mouseCaptureHint');
   let hideStatus;
   function report(message) {
     status.textContent = message;
@@ -164,14 +166,26 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     clearTimeout(hideStatus);
     hideStatus = setTimeout(() => { status.hidden = true; },message.startsWith('CD audio:') ? 5000 : 1200);
   }
-  function reportMode() { report(screen.width + ' × ' + screen.height); }
+  function reportMode() { report(view.resolution().join(' × ')); }
   const frameMs = 1000/60;
+  const instrument = document.querySelector('#wayfinder');
+  let drawInstrument;
   let view, debugConsole, disc, effects, mapView, mapLoading = false, animation, previous, nextFrame, accumulator = 0, fade = 0, leaving = false, fps = 0;
-  let resizeNeeded = true, mouseCaptured = false, edgeTurn = 0;
+  let resizeNeeded = true, mouseCaptured = false, captureWanted = false, capturePending = false, captureGeneration = 0;
+  function drivingInput() {
+    return !mapView && !mapLoading && !leaving && !settingsPanel.open && document.hasFocus();
+  }
+  function updateMouseCaptureUI() {
+    const active = !events.signal.aborted && drivingInput() && !document.hidden;
+    screen.classList.toggle('hide-cursor', active && mouseCaptured);
+    mouseHint.hidden = !active || mouseCaptured;
+  }
   function releaseMouse() {
+    captureWanted = false;
+    captureGeneration++;
     mouseCaptured = false;
-    edgeTurn = 0;
     if (document.pointerLockElement === screen) document.exitPointerLock();
+    updateMouseCaptureUI();
   }
   function release() {
     effects?.setActive(false);
@@ -185,7 +199,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
       'W and S drive, A and D steer. Click to capture the mouse and look around. M opens the map. F switches views. V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape opens the menu.');
   }
-  function dismiss() { session.welcome = false; describe(); }
+  function dismiss() { session.welcome = false; describe(); updateMouseCaptureUI(); }
   async function openMap() {
     mapLoading = true;
     release();
@@ -195,23 +209,23 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
       mapView = createMapView(display,session.map,car,district.start.mapDisplay);
       screen.width = 320; screen.height = 200;
       screen.classList.remove('driving','hide-cursor');
-      screen.setAttribute('aria-label','City map. Arrow keys select a waypoint. M or Escape returns to driving.');
+      screen.setAttribute('aria-label','City map. Click a bay or use arrow keys to select a waypoint. M or Escape returns to driving.');
     } catch (error) {
       console.error('Unable to open map:', error);
       report('Map: ' + error.message);
     } finally {
       mapLoading = false;
+      updateMouseCaptureUI();
     }
   }
   function closeMap() {
     mapView = null;
-    screen.classList.add('driving','hide-cursor');
+    screen.classList.add('driving');
     resizeNeeded = true;
     release();
     describe();
   }
   screen.classList.add('driving');
-  screen.classList.add('hide-cursor');
   screen.focus();
   try {
     view = createCabView(screen, display, district, session);
@@ -221,7 +235,13 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     disc.start();
     describe();
     document.addEventListener('keydown', e => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.key === 'Tab' || leaving) return;
+      if (leaving) return;
+      if (e.code === 'AltLeft' || e.code === 'AltRight') {
+        if (drivingInput() && !session.welcome) held.add(e.code);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || (e.altKey && !['KeyW','KeyS','KeyA','KeyD',
+        'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) || e.key === 'Tab') return;
       if (e.code === 'Backquote') {
         e.preventDefault();
         if (e.repeat) return;
@@ -229,15 +249,20 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
         screen.classList.remove('hide-cursor');
         openSettings(click).then(() => {
           if (events.signal.aborted) return;
-          screen.classList.toggle('hide-cursor', !mapView);
+          resizeNeeded = true;
+          mapView?.invalidate();
           release();
           screen.focus();
         });
+        updateMouseCaptureUI();
         return;
       }
       e.preventDefault();
       if (mapView) {
-        if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyM')) closeMap();
+        if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyM')) {
+          closeMap();
+          captureMouse();
+        }
         else if (e.code === 'ArrowLeft') mapView.move(-2,0);
         else if (e.code === 'ArrowRight') mapView.move(2,0);
         else if (e.code === 'ArrowUp') mapView.move(0,-2);
@@ -246,12 +271,16 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
       }
       if (mapLoading) return;
       if (e.repeat) return;
-      if (session.welcome) { dismiss(); return; }
+      if (session.welcome) { dismiss(); captureMouse(); return; }
       if (e.code === 'Escape') { leaving = true; held.clear(); }
+      else if (e.code === 'KeyZ' && drivingInput()) startHover(car);
       else if (e.code === 'KeyF') {
-        edgeTurn = 0;
         car.camera = car.camera ? 0 : 1;
-        if (car.camera) captureMouse();
+        if (car.camera) {
+          car.chaseYaw = car.angle*Math.PI/2880;
+          car.chaseIdle = 0;
+        }
+        captureMouse();
       }
       else if (e.code === 'KeyM') openMap();
       else if (e.code === 'KeyV') {
@@ -266,9 +295,6 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
       else held.add(e.code);
     }, options);
     document.addEventListener('keyup', e => held.delete(e.code), options);
-    function drivingInput() {
-      return !mapView && !mapLoading && !leaving && !settingsPanel.open && document.hasFocus();
-    }
     document.addEventListener('pointerlockchange', () => {
       const captured = document.pointerLockElement === screen;
       if (mouseCaptured && !captured && drivingInput() && !document.hidden) {
@@ -277,52 +303,91 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
         held.clear();
       }
       mouseCaptured = captured;
-      edgeTurn = 0;
-      if (captured && !drivingInput()) releaseMouse();
+      if (captured && (!captureWanted || !drivingInput())) releaseMouse();
+      else updateMouseCaptureUI();
     }, options);
-    function captureMouse() {
-      if (document.pointerLockElement === screen) return;
+    async function captureMouse() {
+      if (document.pointerLockElement === screen || capturePending || !drivingInput()) return;
+      captureWanted = true;
+      capturePending = true;
+      const generation = captureGeneration;
       try {
-        screen.requestPointerLock()?.then(() => {
-          if (events.signal.aborted || !drivingInput()) releaseMouse();
-        }, () => {
-          if (!events.signal.aborted && drivingInput()) report('Click the driving view to capture the mouse.');
-        });
-      } catch { report('Move the pointer to either edge to keep orbiting in chase.'); }
+        if (typeof screen.requestPointerLock !== 'function') throw new Error('Pointer lock is not supported by this browser.');
+        try {
+          await screen.requestPointerLock({unadjustedMovement:true});
+        } catch (error) {
+          if (error.name !== 'NotSupportedError' && !(error instanceof TypeError)) throw error;
+          if (generation !== captureGeneration || !drivingInput()) return;
+          await screen.requestPointerLock();
+        }
+        if (events.signal.aborted) {
+          if (!screen.classList.contains('driving') && document.pointerLockElement === screen) document.exitPointerLock();
+        } else if (generation !== captureGeneration || !drivingInput()) releaseMouse();
+      } catch (error) {
+        if (generation === captureGeneration && !events.signal.aborted && drivingInput()) {
+          captureWanted = false;
+          console.warn('Unable to capture the driving mouse:',error);
+          report('Mouse capture unavailable. Click the driving view to retry.');
+          updateMouseCaptureUI();
+        }
+      } finally {
+        capturePending = false;
+      }
     }
+    document.addEventListener('pointerlockerror', () => {
+      if (!capturePending && captureWanted && drivingInput() && !document.pointerLockElement) {
+        captureWanted = false;
+        console.warn('The browser rejected pointer lock.');
+        report('Mouse capture unavailable. Click the driving view to retry.');
+        updateMouseCaptureUI();
+      }
+    }, options);
     screen.addEventListener('click', e => {
-      if (e.button !== 0 || !drivingInput()) return;
+      if (e.button !== 0 || settingsPanel.open || leaving) return;
+      if (mapView) {
+        const rect = screen.getBoundingClientRect();
+        mapView.selectAt((e.clientX-rect.left)*320/rect.width,(e.clientY-rect.top)*200/rect.height);
+        return;
+      }
+      if (!drivingInput()) return;
       if (session.welcome) dismiss();
       captureMouse();
     }, options);
-    screen.addEventListener('wheel', e => {
-      if (!car.camera || !drivingInput() || session.welcome || e.ctrlKey) return;
+    document.addEventListener('wheel', e => {
+      if (!car.camera || !drivingInput() || session.welcome || e.ctrlKey ||
+          (document.pointerLockElement !== screen && e.target !== screen)) return;
       e.preventDefault();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? screen.clientHeight : 1;
       zoomChase(car,e.deltaY*unit);
-    }, {...options,passive:false});
+    }, {...options,passive:false,capture:true});
     document.addEventListener('mousemove', e => {
-      if (!session.welcome && drivingInput() && (document.pointerLockElement === screen || e.target === screen)) {
-        turnView(car,e.movementX,settings.invertY ? -e.movementY : e.movementY);
-        if (car.camera && !document.pointerLockElement) {
-          const bounds = screen.getBoundingClientRect();
-          edgeTurn = e.clientX <= bounds.left+3 ? -1 : e.clientX >= bounds.right-3 ? 1 : 0;
-        }
+      if (!session.welcome && drivingInput() && document.pointerLockElement === screen) {
+        turnView(car,e.movementX,settings.invertY ? -e.movementY : e.movementY,district);
       }
     }, options);
-    screen.addEventListener('mouseleave', () => { edgeTurn = 0; }, options);
     window.addEventListener('blur', release, options);
+    window.addEventListener('focus', updateMouseCaptureUI, options);
     document.addEventListener('visibilitychange', release, options);
     window.addEventListener('resize', () => { resizeNeeded = true; }, options);
+    updateMouseCaptureUI();
     await new Promise((done,fail) => {
       function frame(now) {
         try {
+          if (mapView) {
+            const elapsed = Math.min(0.1,(now-(previous ?? now))/1000);
+            previous = now;
+            instrument.hidden = true;
+            mapView.draw(elapsed);
+            debugConsole.update(now,elapsed > 0 ? 1/elapsed : fps);
+            animation = requestAnimationFrame(frame);
+            return;
+          }
           nextFrame ??= now;
           // Keep the 60 Hz phase across 120/144/165 Hz display callbacks.
           // Missed presentation slots expire without a burst of catch-up draws.
           if (now+0.2 < nextFrame) { animation = requestAnimationFrame(frame); return; }
           nextFrame += (1+Math.floor((now+0.2-nextFrame)/frameMs))*frameMs;
-          if (resizeNeeded && !mapView) { view.resize(); resizeNeeded = false; }
+          if (resizeNeeded) { view.resize(); resizeNeeded = false; }
           const frameElapsed = (now-(previous ?? now))/1000;
           const elapsed = Math.min(0.1,frameElapsed);
           previous = now;
@@ -331,7 +396,6 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           const driving = drivingInput() && !document.hidden;
           effects.setActive(driving);
           if (driving && !session.welcome) {
-            if (car.camera && edgeTurn && !mouseCaptured) turnView(car,edgeTurn*900*elapsed);
             accumulator += elapsed;
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
@@ -347,16 +411,21 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.z = lastTick.z + (car.z-lastTick.z)*alpha;
           const rotation = (car.angle-lastTick.angle+8640)%5760-2880;
           visibleCar.angle = lastTick.angle + rotation*alpha;
+          if (driving && !session.welcome) updateChaseCamera(car,visibleCar.angle,elapsed);
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
           visibleCar.headlights = car.headlights;
           visibleCar.lookYaw = car.lookYaw;
           visibleCar.lookPitch = car.lookPitch;
-          visibleCar.orbitYaw = car.orbitYaw;
+          visibleCar.chaseYaw = car.chaseYaw;
           visibleCar.chasePitch = car.chasePitch;
           visibleCar.chaseDistance = car.chaseDistance;
-          if (mapView) mapView.draw();
-          else view.draw(visibleCar,session.welcome,fade);
+          view.draw(visibleCar,session.welcome,fade);
+          instrument.hidden = Boolean(car.camera || !car.waypoint || leaving);
+          if (!instrument.hidden) {
+            drawInstrument ??= cockpitWayfinder(instrument,session.map,district);
+            drawInstrument(car,now);
+          }
           debugConsole.update(now,fps);
           if (leaving && fade === 0) done();
           else animation = requestAnimationFrame(frame);
@@ -372,6 +441,8 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
     if (disc) { session.cdTrack = disc.currentTrack(); disc.close(); }
     clearTimeout(hideStatus);
     status.hidden = true;
+    mouseHint.hidden = true;
+    instrument.hidden = true;
     cancelAnimationFrame(animation);
     debugConsole?.destroy();
     view?.close();
@@ -416,6 +487,7 @@ export async function runMainMenu(game) {
       const key = await input;
       if (key === 'Backquote') {
         await openSettings(click);
+        draw();
         screen.focus();
         input = nextInput();
         continue;

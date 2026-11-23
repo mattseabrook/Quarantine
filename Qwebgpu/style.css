@@ -19,9 +19,14 @@ button:disabled { opacity: .45; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 #screen.driving { position: fixed; inset: 0; width: 100%; height: 100dvh; aspect-ratio: auto; }
 #screen.driving.hide-cursor { cursor: none; }
+#wayfinder { position: fixed; right: 2vw; top: 2dvh; width: clamp(96px, 13vmin, 192px);
+  height: auto; pointer-events: none; image-rendering: pixelated; }
 [hidden] { display: none !important; }
 
 #checkpoint, #restoreChoice { position: fixed; bottom: .5rem; margin: 0; padding: .3rem .8rem; background: #151b20; text-align: center; }
+#checkpoint { pointer-events: none; }
+#mouseCaptureHint { position: fixed; left: 50%; bottom: 3rem; transform: translateX(-50%); margin: 0;
+  padding: .3rem .8rem; background: #151b20e8; text-align: center; pointer-events: none; }
 #settingsPanel {
   --amber: #f5bb60;
   box-sizing: border-box; width: min(29rem, calc(100vw - 2rem)); max-height: 88dvh;

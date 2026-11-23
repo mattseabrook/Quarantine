@@ -1,10 +1,10 @@
-; Analyzer entry: 0004168c
-; Analyzer symbol: FUN_0004168c
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004168C
+; Semantic name: find_player_ceiling
+; Evidence: Scans reverse-facing floors in the player's MAP cell for the nearest qualifying height above the player.
 
-%macro emit_function_0004168c_part_00 0
+%macro emit_find_player_ceiling_part_00 0
     %%fragment_start:
-function_0004168c:
+find_player_ceiling:
     %%insn_0004168c_4168C:
     push ebx ; 0004168C 53
     %if ($ - %%insn_0004168c_4168C) > 1

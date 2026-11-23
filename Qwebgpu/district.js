@@ -8,7 +8,7 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
   tiles.forEach((word,i) => {
     const block = word&127;
     if (!block) return;
-    for (const [bx,by,z,radius,color] of mesh.blockLights[block*4+((word>>>8)&3)]) {
+    for (const [bx,by,z,radius,color,,intensity=1,sourceRoughness=0] of mesh.blockLights[block*4+((word>>>8)&3)]) {
       const x = (i%width)*512+bx, y = Math.floor(i/width)*512+by;
       const left = Math.max(0,Math.floor((x-radius)/512)), right = Math.min(width-1,Math.floor((x+radius)/512));
       const top = Math.max(0,Math.floor((y-radius)/512)), bottom = Math.min(height-1,Math.floor((y+radius)/512));
@@ -18,7 +18,8 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
           if (!bins.has(cell)) bins.set(cell,[]);
           const c = color*3;
           bins.get(cell).push(x,y,z,1/(radius*radius),
-            (palette[c]/63)**2,(palette[c+1]/63)**2,(palette[c+2]/63)**2,0);
+            intensity*(palette[c]/63)**2,intensity*(palette[c+1]/63)**2,
+            intensity*(palette[c+2]/63)**2,sourceRoughness);
         }
       }
     }

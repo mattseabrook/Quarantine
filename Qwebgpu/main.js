@@ -244,8 +244,14 @@ async function manualChallenge({lines, widths, glyphs, background, question, vga
 async function splash(vga, image, voice) {
   vga.setImage(image);
   await vga.fade(image.dac, true);
-  await waitForAudio();
-  await sound(voice).ended;
+  if (audio.state === 'closed') throw new Error('Game audio was closed.');
+  if (audio.state === 'running') {
+    const playback = sound(voice);
+    const ended = await Promise.race([playback.ended.then(() => true),wait(voice.duration*1000).then(() => false)]);
+    if (!ended) playback.source.stop();
+  } else {
+    await retraces(180);
+  }
   await vga.fade(image.dac, false);
 }
 

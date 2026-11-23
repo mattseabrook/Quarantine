@@ -14,24 +14,30 @@ const coreFixtures = new Map([
   [8,[6,10,19]], [9,[3,9,24]], [10,[10,2,6]], [13,[14,32,39]],
 ]);
 
-// Bulb arrays in the Core gantry textures, in original 64 x 64 texels.
-// Sample the brightest red bulb in each array using the installed district DAC.
-const cautionArrays = {
+// Bounds of lit groups in the original 64×64 wall art. Grouping the dense
+// panel keeps its pools broad without evaluating a point light for every bulb.
+const bulbRegions = {
+  'KWALL4.SPR': {6:[[29,2,62,15]]},
   'KWALL6.SPR': {10:[[4,11,33,18],[19,43,56,50]],11:[[18,1,53,18]]},
   'KWALL7.SPR': {0:[[30,9,59,16],[21,21,50,28],[6,40,43,47]]},
+  'KWALL9.SPR': {0:[[4,2,32,14],[32,2,61,14]]},
+  'KWALL15.SPR': {7:[[5,2,31,29],[32,2,60,29],[5,29,31,52],[32,29,60,52],[54,55,60,61]]},
 };
 
-function cautionPanels(name, image, sprite, dac) {
-  return (cautionArrays[name]?.[image] ?? []).map(([x0,y0,x1,y1]) => {
+function bulbPanels(name, image, sprite, dac) {
+  return (bulbRegions[name]?.[image] ?? []).map(([x0,y0,x1,y1]) => {
     let color = 0, strongest = 0;
     for (let y=y0; y<y1; y++) {
       for (let x=x0; x<x1; x++) {
         const ink = sprite.pixels[y*sprite.width+x], c = 3*ink;
-        const red = dac[c]-Math.max(dac[c+1],dac[c+2]);
-        if (red > strongest) { strongest = red; color = ink; }
+        const warmth = dac[c]+0.5*dac[c+1]-1.5*dac[c+2];
+        if (warmth > strongest) { strongest = warmth; color = ink; }
       }
     }
-    return {u:(x0+x1)/(2*sprite.width),v:(y0+y1)/(2*sprite.height),color};
+    const dense = name === 'KWALL15.SPR';
+    const indicator = dense && x0 >= 54;
+    return {u:(x0+x1)/(2*sprite.width),v:(y0+y1)/(2*sprite.height),color,
+      reach:indicator ? 0.7 : dense ? 1.25 : 1.7, halo:indicator ? 0.09 : dense ? 0.17 : 0.2};
   });
 }
 
@@ -170,7 +176,7 @@ export function districtMesh(district) {
     animations.push({mask:sequence.mask,frames});
   });
   const panels = district.banks.map((bank,k) => bank.map((sprite,i) =>
-    cautionPanels(district.bankNames[k],i,sprite,district.floor.dac)));
+    bulbPanels(district.bankNames[k],i,sprite,district.floor.dac)));
   const skyPixels = linearPixels(district.sky.planes);
   const skyIndex = district.panorama ? skyColorIndex(skyPixels,district.floor.dac) : district.flatSkyIndex;
   const sky = pack({width: 320,height: 200,pixels: skyPixels});
@@ -230,11 +236,28 @@ export function districtMesh(district) {
           const reverseUV = Boolean(side);
           if (!side || !sameArt) {
             for (let repeat=0; repeat<face.repeats; repeat++) {
-              for (const {u,v,color} of bulbs) {
+              for (const {u,v,color,reach,halo} of bulbs) {
                 const t = (repeat+(reverseUV ? u : 1-u))/face.repeats;
                 const height = Math.abs(c[2]-a[2]);
-                lights.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1]),
-                  a[2]+v*(c[2]-a[2]),height*1.7,color,height*.20]);
+                const dx = b[0]-a[0], dy = b[1]-a[1];
+                const outward = sign*2/Math.hypot(dx,dy);
+                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
+                  a[2]+v*(c[2]-a[2]),height*reach,color,height*halo]);
+              }
+              if (district.bankNames[bank] === 'KWALL15.SPR' && image === 7 && bulbs.length) {
+                const t = (repeat+0.5)/face.repeats;
+                const height = Math.abs(c[2]-a[2]);
+                const dx = b[0]-a[0], dy = b[1]-a[1];
+                const outward = sign*2/Math.hypot(dx,dy);
+                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
+                  a[2]+0.45*(c[2]-a[2]),height*5,bulbs[0].color,0,1.4,0.35]);
+              } else if (bulbs.length) {
+                const t = (repeat+0.5)/face.repeats;
+                const height = Math.abs(c[2]-a[2]);
+                const dx = b[0]-a[0], dy = b[1]-a[1];
+                const outward = sign*2/Math.hypot(dx,dy);
+                lights.push([a[0]+t*dx+dy*outward,a[1]+t*dy-dx*outward,
+                  a[2]+0.5*(c[2]-a[2]),Math.max(280,height*4),bulbs[0].color,0,1.4,-0.4]);
               }
             }
           }

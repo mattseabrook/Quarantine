@@ -31,8 +31,9 @@ Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
 byte. The 1,019 documented entries comprise 1,014 analyzer-seeded functions and
 one additional wall animation callback in object 1, two gameport routines in
-object 2, and two VGA routines in object 3. Currently 170 entries have descriptive
-roles (16.68%), including probable identifications. The other 849 retain provisional names.
+object 2, and two VGA routines in object 3. Currently 177 entries have descriptive
+roles (17.37%), including probable identifications. The other 842 retain provisional names.
+This measures naming coverage, not verified behavioral coverage or browser parity.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
 format, toolchain, and recovered game behavior.
@@ -76,9 +77,19 @@ game process.
 | `0x354F8`, `0x23361`, `0x23552` | Set a map palette entry and draw transparent or opaque sprites to the wide map page |
 | `0x44A30`, `0x44A90` | Load a ZZZ palette and map overlay, and expand packed data using the decoder shared with KPG |
 | `0x2B530`, `0x2C5F8` | Load New Game district assets, including collision and trigger tables |
+| [`0x2BC70`](src/functions/resource_io/load_district_object_classes.asm), [`0x25E30`](src/functions/runtime/resolve_player_sprite_contact.asm) | Load `OBJ%d.DAT` digit rows by sprite page and dispatch the first projected contact by its class |
+| [`0x1AD00`](src/functions/runtime/initialize_player_driving.asm), [`0x1AD98`](src/functions/runtime/update_player_driving.asm) | Initialize and update keyboard driving state, speed, steering and yaw |
+| [`0x316C0`](src/functions/runtime/update_player_vertical_motion.asm), [`0x31F44`](src/functions/runtime/start_player_hover.asm), [`0x4168C`](src/functions/runtime/find_player_ceiling.asm) | Integrate vertical movement, start hover and query a reverse-facing overhead floor |
 | `0x2B704`, `0x45340` | Set up the district for play and initialize its indexed state table |
 | `0x56FB8`, `0x575D1` | Start a mixer voice from a sample descriptor and stop the voice by its slot index |
 | `0x57E7D` | Replace the 16.16 playback step at offset `+0x44` of an active mixer voice and return its previous value |
+
+The object-contact jump table at `0x25E18` maps classes 4–6 to
+speed-dependent lateral slides, 7 to a stop, 8 to a partial reversal and 9
+to speed reduction. Candidate collection occurs during district rendering at
+`0x40A7C`; its first entry supplies the page and image indices. The class
+data is separate from the per-MAP collision and trigger tables. These
+observations do not establish all collision timing or other class behaviors.
 
 ## Manual challenge and VGA output
 

@@ -1,5 +1,10 @@
 ; Analyzer entry: 000523ac
 ; Analyzer symbol: FUN_000523ac
+; The map marker loop calls this with the selected BAY record at 0x5201B.
+; The manual waypoint branch at 0x52C1C draws the bay type (DS:C7B4),
+; district (+2, DS:C7DC), and Euclidean range from whole 512-unit cells.
+; DS:3793 scales the range by ten; DS:3768 formats its quotient and
+; remainder modulo 100. MAPICONS text occupies rows 5, 13 and 21 of the strip.
 ; Boundary and name are provisional until independently verified.
 
 %macro emit_function_000523ac_part_00 0

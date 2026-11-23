@@ -1,10 +1,10 @@
-; Analyzer entry: 0001ad00
-; Analyzer symbol: FUN_0001ad00
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0001AD00
+; Semantic name: initialize_player_driving
+; Evidence: Initializes steering, speed and rotational driving state consumed by 0x1AD98.
 
-%macro emit_function_0001ad00_part_00 0
+%macro emit_initialize_player_driving_part_00 0
     %%fragment_start:
-function_0001ad00:
+initialize_player_driving:
     %%insn_0001ad00_1AD00:
     push ebx ; 0001AD00 53
     %if ($ - %%insn_0001ad00_1AD00) > 1

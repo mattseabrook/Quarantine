@@ -1,4 +1,5 @@
 import {createHDTexture} from './hd-images.js';
+import {createPostprocess} from './postprocess.js';
 
 // A fullscreen triangle presents the VGA frame and any replacement backdrop.
 const width = 320, height = 200;
@@ -51,6 +52,7 @@ export async function createDisplay(canvas) {
   if (!adapter) throw new Error('WebGPU is unavailable. Check graphics acceleration in Chrome or Brave.');
   const device = await adapter.requestDevice();
   const format = navigator.gpu.getPreferredCanvasFormat();
+  const postprocess = await createPostprocess(device,format);
   const shader = device.createShaderModule({code: webgpuShader});
   const pipeline = await device.createRenderPipelineAsync({
     layout: 'auto', vertex: {module: shader, entryPoint: 'vertex'},
@@ -81,8 +83,9 @@ export async function createDisplay(canvas) {
   function draw(displayMode, brightness = 1) {
     const w = displayMode === 3 ? hdTexture.width : width;
     const h = displayMode === 3 ? hdTexture.height : height;
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
+    const ow = w, oh = h;
+    if (canvas.width !== ow) canvas.width = ow;
+    if (canvas.height !== oh) canvas.height = oh;
     if (previousMode !== displayMode || previousBrightness !== brightness) {
       previousMode = displayMode;
       previousBrightness = brightness;
@@ -91,8 +94,10 @@ export async function createDisplay(canvas) {
       device.queue.writeBuffer(layout, 0, mode);
     }
     const commands = device.createCommandEncoder();
+    const output = context.getCurrentTexture().createView();
+    postprocess.release();
     const pass = commands.beginRenderPass({colorAttachments: [{
-      view: context.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store',
+      view: output, loadOp: 'clear', storeOp: 'store',
       clearValue: {r: 0, g: 0, b: 0, a: 1},
     }]});
     pass.setPipeline(pipeline);
@@ -104,7 +109,7 @@ export async function createDisplay(canvas) {
 
   const rgba = new Uint8Array(256 * 4).fill(255);
   return {
-    device, context, format,
+    device, context, format, postprocess,
     presentIndexed(frame, dac, pixelsChanged, linear = false, paletteChanged = true, replacement) {
       if (replacement && currentBitmap !== replacement.bitmap) {
         currentBitmap = replacement.bitmap;

@@ -131,7 +131,7 @@ Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/R
 | Main menu | Arrow keys or W/S, Enter or Space, mouse hover and click | New Game and Load are active. Quit Game plays `BQUAR2DK.AVI` and returns to the logo and title sequence. |
 | Save slots | Arrows, Enter, Y/N, Escape | Browse the five slot headers and answer the restore prompt |
 | New Game | Key or click at the welcome prompt | Leave the loading image, enter the Core cab view and dismiss the prompt. Escape opens the menu and Resume restores the view. |
-| Driving | W/S, A/D, mouse, F, −/+ | W/S apply thrust or brake, A/D steer, and F toggles cockpit or chase. Move the mouse to look, scroll to zoom outside, and use −/+ for render resolution. |
+| Driving | W/S, A/D, Alt, Z, mouse, F, −/+ | W/S apply thrust or brake, A/D steer, Alt suppresses steering, Z triggers hover, and F toggles cockpit or chase. Move the mouse to look, scroll to zoom outside, and use −/+ for render resolution. |
 | Save restoration checkpoint | Key or tap | Return to the menu after inspecting a saved-game header. |
 | Settings | Tilde / backquote | Open from the main menu or cab to invert vertical mouselook and adjust Sound FX and CD audio volume. Driving settings also include the developer console. |
 
@@ -488,7 +488,7 @@ Qwebgpu fades out WAIT automatically and keeps the district and player state
 when opening the menu. The GPU draws nearby MAP cells as instances of textured
 BLK geometry. The normal keyboard drive path uses the executable's thrust
 curve and heading table. The browser uses a fixed 35 Hz simulation and
-five swept probes for cab-to-wall contact. Gameplay presentation targets 60 FPS. Three
+sweeps the fitted cab bounds against wall runs. Gameplay presentation targets 60 FPS. Three
 workers prepare district assets while WebGPU compiles the pipelines. The
 cockpit and continuously adjustable chase view share one full-detail renderer.
 The renderer resolves coplanar surfaces within each block using its retail BSP and
@@ -810,12 +810,18 @@ Ambient intensity is 0.28 in the shader’s approximate linear-light space.
 | Core fixture | Source art | GPU lighting |
 | --- | --- | --- |
 | Streetlights | Images 0–10 in `KOBJECTS.SPR`. Each fixture samples a luminous texel in its own artwork. The forked lamp (image 5) samples palette index 36 at (8, 6). | A point light at the fixture head reaches 2.6 times its placed height. A separate additive halo has a bright center and soft edge. |
-| Overhead caution lights | The Core gantry spans use `KWALL6.SPR` images 10 and 11 and `KWALL7.SPR` image 0. Their red bulb arrays sit in masked 64×64 wall textures. | Each array takes its emitter color from its brightest red bulb. Wall endpoints, texture repeats, height and the active MAP variant place its point light and halo. |
+| Overhead caution lights | The Core gantry spans use `KWALL6.SPR` images 10 and 11 and `KWALL7.SPR` image 0. Their red bulb arrays sit in masked 64×64 wall textures. | Each array takes its emitter color from its brightest red bulb. Wall endpoints, texture repeats, height and the active MAP variant place its point light and halo. A broader cab-only contribution reaches the car without brightening the street. |
 | Stop sign | Image 13. The electronic STOP lettering at (14, 32) uses palette index 27, pure red. | The panel casts a red pool reaching 1.7 times the sign’s height, with a smaller halo over the lettering. |
+| Wall bulb panels | `KWALL15.SPR` image 7 has a bank of yellow lamps and a red indicator in the lower right. `KWALL4.SPR` image 6 and `KWALL9.SPR` image 0 contain red strips. | The yellow lamps are grouped into four local emitters per panel, plus a broader warm spill reaching five times the panel height. The broad source softens specular highlights on the cab. The red indicator has a shorter reach. Each source sits just outside its wall face and uses the installed district palette. |
 
 The surface shader looks up emitters by MAP cell and applies distance falloff and
 surface angle. A second GPU draw projects one halo per visible fixture in world
 units and depth-tests it against the street and opaque cab geometry. The taxi glass draws after the halos. Point lights currently have no shadow maps.
+
+The HD cab takes its ambient and reflected color from the district sky, with
+a subdued, more neutral sky reflection on metallic materials. Each
+nearby fixture contributes diffuse color and a specular highlight based on its
+position relative to the material normal, the eye, and the cab’s roughness map.
 
 #### Cab dimensions, cameras and wall contact
 
@@ -824,7 +830,7 @@ units and depth-tests it against the street and opaque cab geometry. The taxi gl
 | Cockpit | The HD camera pivots above and behind the GLB's modeled steering wheel. Cockpit and chase share its geometry and materials. The original welcome lettering appears over the model. Head movement spans 100° to either side and 45° up or down. |
 | HD model fit | On a level road, `0x31AF7` subtracts 20 from the supporting floor to set the vehicle origin. Qwebgpu scales the distance between the GLB’s lowest tyre and its modeled driver's eye to those 20 units. The resulting car measures approximately 79 long × 30 wide × 27 high. One MAP cell spans 512 units. |
 | Calibration | The eye above the HD steering wheel is a placement choice. The 120-unit wall probe is a gameplay distance. The executable supplies no dimensions for this replacement model. |
-| Chase camera | F toggles the view. The boom ranges from 46 to 130 units, initially 76. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
+| Chase camera | F toggles the view. The boom ranges from 46 to 260 units, initially 76. At minimum zoom it is just above the cab bottom; at maximum its ground-relative height doubles from the former far setting. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
 
 At `0x2620A`, SKIPIT forms five headings around the direction of travel in
 the order −25°, +25°, −13°, +13°, 0°. At `0x262D5` it multiplies the
@@ -871,7 +877,7 @@ gave both adjacent cells two walls and no floor.
 | Window panel orientation | `0x3305C` changes SPR rows to columns, then `0x3C0BC` advances through whole columns as screen X increases. | The GPU samples the disk rows directly. |
 | Which wall spans can show through | `0x41FA5` and `0x4247C` consult flag bit 1 for the reverse side. The uniform path tests bit 0 for masking. The high-detail sectioned loop at `0x3C7EF` tests the whole flag byte. Both read materials from screen left to right. | Sectioned walls select the material for the viewed side before testing its transparency. An opaque column writes index zero as a color. A masked column skips a zero source texel before shading. |
 | Road surface | `0x44184` receives floor scale and orientation. The four jump-table entries at `0x44174` select quarter-turns. A scale of 1 doubles the repeat period to 128 world units. | The mesh uses the BLK rotation and scale for each polygon. |
-| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40F01` checks the descriptor pointer. | The renderer submits the occupied cells in that neighborhood, including their sprites and halos. The GPU clips to the selected FOV. |
+| Distant geometry visible through the street | `0x40EA6` stops after 49 candidate cells. Signed word pairs at `DS:0xA9BA` cover the surrounding 7×7 square. `0x40F01` checks the descriptor pointer. | The browser instead submits visible cells across the entire finite MAP, including their sprites and halos, grouped into frustum-culled instances. |
 | Distance shading | The first RGB triple in `DATA1.DAT` specifies black. `0x34094` builds sixteen palette remaps. The 64 bytes at `DS:0x8C7A` select a remap by depth. | The shader looks up the street color after the mask test. The cab overlay keeps its display palette. |
 
 The port uses a GPU depth buffer. DOS interpolates shade values along projected spans and visits
@@ -916,7 +922,7 @@ tables have suffixes `0` through `4`. [Floor and wall loader](disassembly/SKIPIT
 | `TEXTURE%d.DAT` | First 15 rows of 12 ASCII hexadecimal flags with CRLF | The loader decodes nibbles and records the `(row,column)` pairs whose bit 2 is set |
 | `DATA%d.DAT` | Annotated colon-delimited text, 88 bytes per file | `0x33EE0` loads district rendering parameters. The first line identifies depth-shade RGB. |
 | `ANIM%d.DAT` | ASCII `s<mask>` followed by ten `:bank,image` pairs | A bank of 99 ends the sequence. The callback at `0x3609C` advances active frames when the current phase has none of the mask bits set. |
-| `OBJ%d.DAT` | Fixed-width digit rows and an `EOF` marker, with comments after it | Object-page configuration. Exact field mapping remains open. |
+| `OBJ%d.DAT` | Digit rows and an `EOF` marker, with comments after it | Sprite-bank/image interaction classes; SKIPIT's contact handler uses classes 4–9 for sliding, stopping, bouncing and slowing. |
 | `BAY%d.DAT` | Binary files of 560–1,840 bytes, all multiples of 40 | `0x4F640` selects the district garage data. Type is at +0, world X at +4 and world Y at +8. The map uses these fields for bay symbols and directional selection. |
 | `COLLDAT.DAT`, `TRIGDAT.DAT` | Comma-prefixed decimal integers terminated by a colon | `0x2C6A8` expands the text into words. `0x2C5F8` copies 128 words starting at `district * 128` from each table. |
 | `CONFIG.DAT`, `INPUT.DAT`, `SOUND.DAT` | Retail files are 1, 2, and 2 bytes respectively | Installation settings. Input and sound loads are referenced at `0x30430` and `0x4A435`. |

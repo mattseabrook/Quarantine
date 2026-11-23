@@ -142,8 +142,8 @@ bits 32
 %include "src/functions/unresolved/0001ab08_fun_0001ab08.asm"
 %include "src/functions/unresolved/0001abc4_fun_0001abc4.asm"
 %include "src/functions/unresolved/0001ac80_fun_0001ac80.asm"
-%include "src/functions/unresolved/0001ad00_fun_0001ad00.asm"
-%include "src/functions/unresolved/0001ad98_fun_0001ad98.asm"
+%include "src/functions/runtime/initialize_player_driving.asm"
+%include "src/functions/runtime/update_player_driving.asm"
 %include "src/functions/unresolved/0001b340_fun_0001b340.asm"
 %include "src/functions/unresolved/0001b7ec_fun_0001b7ec.asm"
 %include "src/functions/unresolved/0001bdb0_fun_0001bdb0.asm"
@@ -245,7 +245,7 @@ bits 32
 %include "src/functions/unresolved/00025cd0_fun_00025cd0.asm"
 %include "src/functions/unresolved/00025d10_fun_00025d10.asm"
 %include "src/functions/unresolved/00025d7c_fun_00025d7c.asm"
-%include "src/functions/unresolved/00025e30_fun_00025e30.asm"
+%include "src/functions/runtime/resolve_player_sprite_contact.asm"
 %include "src/functions/runtime/resolve_player_wall_contact.asm"
 %include "src/functions/unresolved/00026514_fun_00026514.asm"
 %include "src/functions/unresolved/000266e0_fun_000266e0.asm"
@@ -300,7 +300,7 @@ bits 32
 %include "src/functions/unresolved/0002bae4_fun_0002bae4.asm"
 %include "src/functions/graphics/prepare_forward_cab_overlay.asm"
 %include "src/functions/graphics/prepare_loading_door_masks.asm"
-%include "src/functions/unresolved/0002bc70_fun_0002bc70.asm"
+%include "src/functions/resource_io/load_district_object_classes.asm"
 %include "src/functions/resource_io/load_floor_and_wall_texture_tables.asm"
 %include "src/functions/unresolved/0002c030_fun_0002c030.asm"
 %include "src/functions/unresolved/0002c0ac_fun_0002c0ac.asm"
@@ -396,13 +396,13 @@ bits 32
 %include "src/functions/unresolved/00031174_fun_00031174.asm"
 %include "src/functions/unresolved/000315f4_fun_000315f4.asm"
 %include "src/functions/unresolved/00031604_fun_00031604.asm"
-%include "src/functions/unresolved/000316c0_fun_000316c0.asm"
+%include "src/functions/runtime/update_player_vertical_motion.asm"
 %include "src/functions/unresolved/00031d70_fun_00031d70.asm"
 %include "src/functions/unresolved/00031e08_fun_00031e08.asm"
 %include "src/functions/unresolved/00031e80_fun_00031e80.asm"
 %include "src/functions/unresolved/00031eac_fun_00031eac.asm"
 %include "src/functions/unresolved/00031f20_fun_00031f20.asm"
-%include "src/functions/unresolved/00031f44_fun_00031f44.asm"
+%include "src/functions/runtime/start_player_hover.asm"
 %include "src/functions/unresolved/00031f88_fun_00031f88.asm"
 %include "src/functions/unresolved/00032008_fun_00032008.asm"
 %include "src/functions/unresolved/00032068_fun_00032068.asm"
@@ -538,7 +538,7 @@ bits 32
 %include "src/functions/unresolved/00041460_fun_00041460.asm"
 %include "src/functions/runtime/find_floor_below_point.asm"
 %include "src/functions/unresolved/00041594_fun_00041594.asm"
-%include "src/functions/unresolved/0004168c_fun_0004168c.asm"
+%include "src/functions/runtime/find_player_ceiling.asm"
 %include "src/functions/graphics/draw_floor_polygon.asm"
 %include "src/functions/graphics/draw_uniform_material_wall.asm"
 %include "src/functions/graphics/draw_sectioned_material_wall.asm"
@@ -3424,7 +3424,7 @@ emit_function_0001ac80_part_00
 %if ($ - $$) != 0xAD00
     %error "layout drift at raw 00035300"
 %endif
-emit_function_0001ad00_part_00
+emit_initialize_player_driving_part_00
 
 ; raw 00035397..00035398 (explicit data)
 %if ($ - $$) != 0xAD97
@@ -3436,7 +3436,7 @@ emit_data_0148_00035397
 %if ($ - $$) != 0xAD98
     %error "layout drift at raw 00035398"
 %endif
-emit_function_0001ad98_part_00
+emit_update_player_driving_part_00
 
 ; raw 0003593F..00035940 (explicit data)
 %if ($ - $$) != 0xB33F
@@ -4528,7 +4528,7 @@ emit_data_0228_00040416
 %if ($ - $$) != 0x15E30
     %error "layout drift at raw 00040430"
 %endif
-emit_function_00025e30_part_00
+emit_resolve_player_sprite_contact_part_00
 
 ; raw 000406C7..000406C8 (explicit data)
 %if ($ - $$) != 0x160C7
@@ -5146,7 +5146,7 @@ emit_data_0276_0004626d
 %if ($ - $$) != 0x1BC70
     %error "layout drift at raw 00046270"
 %endif
-emit_function_0002bc70_part_00
+emit_load_district_object_classes_part_00
 
 ; raw 0004633D..00046340 (explicit data)
 %if ($ - $$) != 0x1BD3D
@@ -6172,7 +6172,7 @@ emit_data_0351_0004bc86
 %if ($ - $$) != 0x216C0
     %error "layout drift at raw 0004BCC0"
 %endif
-emit_function_000316c0_part_00
+emit_update_player_vertical_motion_part_00
 
 ; raw 0004C370..0004C406 (analyzer-owned function)
 %if ($ - $$) != 0x21D70
@@ -6226,7 +6226,7 @@ emit_data_0354_0004c543
 %if ($ - $$) != 0x21F44
     %error "layout drift at raw 0004C544"
 %endif
-emit_function_00031f44_part_00
+emit_start_player_hover_part_00
 
 ; raw 0004C586..0004C588 (explicit data)
 %if ($ - $$) != 0x21F86
@@ -7696,7 +7696,7 @@ emit_data_0464_0005bc89
 %if ($ - $$) != 0x3168C
     %error "layout drift at raw 0005BC8C"
 %endif
-emit_function_0004168c_part_00
+emit_find_player_ceiling_part_00
 
 ; raw 0005BDAB..0005BDB0 (explicit data)
 %if ($ - $$) != 0x317AB

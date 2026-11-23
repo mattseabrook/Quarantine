@@ -3,6 +3,7 @@ import {settings} from './settings.js';
 import {cameraPose, ticksPerSecond} from './driving.js';
 import {createHDTexture} from './hd-images.js';
 import {taxiShader,prepareTaxiPipelines} from './taxi-material.js';
+import {textureFilterShader} from './texture-filter.js';
 import {cloudResolutionDivisor, cloudTargetFormat, prepareCloudPipeline, skylineKey, skyResources} from './skybox.js';
 
 const cabinHalfWidth = 26, windshieldDistance = 22, cabinTopClearance = 19;
@@ -16,7 +17,7 @@ struct View {
   eye: vec4f, axes: vec4f, scale: vec4f, outputSize: vec4f,
   sky: vec4f, player: vec4f, settings: vec4f,
   ambient: vec4f, backdrop: vec4f, hd: vec4u, skyTint: vec4f,
-  headlamps: array<vec4f,2>
+  headlamps: array<vec4f,2>, textureEffects: vec4f
 };
 fn skyRay(uv: vec2f) -> vec3f {
   let offset = (2.0*uv-1.0)/view.scale.xy;
@@ -30,7 +31,7 @@ fn skyRay(uv: vec2f) -> vec3f {
   return vec4f(2.0*p-1.0,0.0,1.0);
 }`;
 
-const shader = cameraShader + `
+const shader = cameraShader + textureFilterShader + `
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var atlas: texture_2d<u32>;
 @group(0) @binding(2) var colors: texture_2d<f32>;
@@ -148,6 +149,7 @@ fn lightAt(worldPos: vec3f, normal: vec3f, diffuse: bool) -> vec3f {
     let end = cellStarts[bin+1u];
     for (var i=cellStarts[bin]; i<end; i++) {
       let light = lights[i];
+      if (light.rgb.w < 0.0) { continue; }
       let toLamp = light.positionRadius.xyz-worldPos;
       let d2 = dot(toLamp,toLamp);
       let falloff = max(0.0,1.0-d2*light.positionRadius.w);
@@ -160,10 +162,8 @@ fn lightAt(worldPos: vec3f, normal: vec3f, diffuse: bool) -> vec3f {
   }
   return irradiance;
 }
-fn districtFog(distance: f32) -> vec2f {
-  let haze = 1.0-exp(-max(distance-800.0,0.0)/6500.0);
-  let fade = 1.0-smoothstep(16384.0,49152.0,distance);
-  return vec2f(haze,fade);
+fn districtHaze(distance: f32) -> f32 {
+  return 1.0-exp(-max(distance-800.0,0.0)/6500.0);
 }
 fn headlightAt(point:vec3f, normal:vec3f, billboard:bool) -> f32 {
   let forward = view.outputSize.zw;
@@ -185,6 +185,14 @@ fn headlightAt(point:vec3f, normal:vec3f, billboard:bool) -> f32 {
   }
   return light;
 }
+fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
+  let size = vec2i(rect.zw);
+  let wrapped = ((p % size)+size) % size;
+  let local = select(wrapped,clamp(p,vec2i(0),size-1),masked);
+  let ink = textureLoad(atlas,vec2i(rect.xy)+local,0).r;
+  if (masked && ink == 0u) { return fallback; }
+  return textureLoad(colors,vec2i(i32(ink),band),0).rgb;
+}
 @fragment fn material(in: Surface) -> @location(0) vec4f {
   if (in.flags == -2.0 && in.height <= view.eye.z) { discard; }
   if (in.flags == -3.0 && in.height >= view.eye.z) { discard; }
@@ -198,28 +206,67 @@ fn headlightAt(point:vec3f, normal:vec3f, billboard:bool) -> f32 {
     if (index == 0u && (flags & 1u) != 0u) { discard; }
   }
   if (in.transparent > 0.0 && index == 0u) { discard; }
-  let fog = districtFog(distance(in.worldPos,view.eye.xyz));
-  if (fog.y == 0.0) { return vec4f(0.0,0.0,0.0,1.0); }
+  let haze = districtHaze(distance(in.worldPos,view.eye.xyz));
   // 0x4279F scales view depth by four; 0x427B8 caps the palette row at 63.
   let band = i32(min(4.0/(in.pos.w*in.shadeDivisor),63.0));
-  let surface = textureLoad(colors,vec2i(i32(index),band+1),0).rgb;
+  var surface = textureLoad(colors,vec2i(i32(index),band+1),0).rgb;
+  let upscale = view.textureEffects.x;
+  let sharpness = view.textureEffects.y;
+  if (upscale > 1.0 || sharpness > 0.0) {
+    let texel = fract(uv)*in.rect.zw;
+    let p = vec2i(floor(texel));
+    let masked = in.transparent > 0.0 || (in.flags >= 0.0 && (u32(in.flags) & 1u) != 0u);
+    let n = atlasColor(in.rect,p+vec2i(0,-1),band+1,masked,surface);
+    let s = atlasColor(in.rect,p+vec2i(0,1),band+1,masked,surface);
+    let w = atlasColor(in.rect,p+vec2i(-1,0),band+1,masked,surface);
+    let e = atlasColor(in.rect,p+vec2i(1,0),band+1,masked,surface);
+    if (upscale > 1.0) {
+      let f = (floor(fract(texel)*upscale)+0.5)/upscale;
+      let side = vec2i(select(-1,1,f.x>=0.5),select(-1,1,f.y>=0.5));
+      let h = select(w,e,side.x>0);
+      let v = select(n,s,side.y>0);
+      let c = array<vec3f,12>(surface,h,v,
+        atlasColor(in.rect,p+side,band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(side.x,-side.y),band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(-side.x,side.y),band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(2*side.x,0),band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(0,2*side.y),band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(2*side.x,side.y),band+1,masked,surface),
+        atlasColor(in.rect,p+vec2i(side.x,2*side.y),band+1,masked,surface),
+        select(e,w,side.x>0),select(s,n,side.y>0));
+      surface = textureEdge(c,f,side);
+    }
+    if (sharpness > 0.0) {
+      let center = textureLinear(textureLoad(colors,vec2i(i32(index),band+1),0).rgb);
+      let sharpened = textureSharpen(center,textureLinear(n),textureLinear(s),textureLinear(w),textureLinear(e),sharpness);
+      surface = textureSrgb(textureLinear(surface)+sharpened-center);
+    }
+  }
   let irradiance = lightAt(in.worldPos,in.normalAndLamp.xyz,in.flags != -4.0);
   var lit = surface*sqrt(irradiance);
+  let ink = textureLoad(colors,vec2i(i32(index),0),0).rgb;
+  var emissive = vec3f(0.0);
   if (view.headlamps[0].w > 0.0) {
     let whiteLight = headlightAt(in.worldPos,in.normalAndLamp.xyz,in.flags == -4.0);
     lit += textureLoad(colors,vec2i(i32(index),0),0).rgb*whiteLight;
   }
-  if (in.flags >= 16.0 && (index == 27u || index == 107u || index == 108u || index == 36u || index == 41u)) {
-    lit = max(lit,textureLoad(colors,vec2i(i32(index),0),0).rgb);
+  if (in.flags >= 16.0) {
+    if ((ink.r > 0.55 && ink.r > ink.b*2.5 && ink.r >= ink.g) || index == 48u) {
+      lit = max(lit,ink);
+      emissive = max(emissive,ink);
+    }
   }
   let emission = in.normalAndLamp.w;
   if (emission >= 1.0 && uv.y < fract(emission)) {
-    let ink = textureLoad(colors,vec2i(i32(index),0),0).rgb;
     let source = textureLoad(colors,vec2i(i32(emission)-1,0),0).rgb;
-    if (dot(ink,source) > 0.55*dot(source,source)) { lit = max(lit,ink); }
+    if (dot(ink,source) > 0.55*dot(source,source)) {
+      lit = max(lit,ink);
+      emissive = max(emissive,ink);
+    }
   }
   let mist = view.skyTint.rgb*0.14;
-  return vec4f(mix(lit,mist,fog.x)*fog.y*view.settings.x,1.0);
+  let distantLight = ink*sqrt(max(irradiance-view.ambient.rgb,vec3f(0.0)))*haze;
+  return vec4f(max(max(mix(lit,mist,haze),distantLight),emissive)*view.settings.x,1.0);
 }
 @fragment fn background(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let screenUV = pos.xy/view.outputSize.xy;
@@ -309,8 +356,8 @@ struct CabVertex {
 }
 
 @fragment fn body(in: CabVertex) -> @location(0) vec4f {
-  let diffuse = 0.72+0.28*dot(in.normal,normalize(vec3f(-0.4,0.3,-0.85)));
-  return vec4f(vec3f(1.0,0.81,0.035)*diffuse*sqrt(lightAt(in.worldPos,in.normal,true))*view.settings.x,1);
+  let eye = normalize(view.eye.xyz-in.worldPos);
+  return vec4f(cabLitColor(vec3f(1.0,0.58,0.012),0.34,0.0,in.worldPos,in.normal,eye),1);
 }
 @fragment fn cabin(in: CabVertex) -> @location(0) vec4f {
   if (in.face >= 3u) {
@@ -369,8 +416,7 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
                      along*view.axes.w-delta.z*view.axes.z);
   // Bias by half a world unit so the glow sits just in front of its own sprite.
   let pos = vec4f((center+disc*source.w)*view.scale.xy,view.backdrop.x*(1.0+0.5/max(depth,12.0)),depth);
-  let fog = districtFog(length(delta));
-  return Halo(pos,disc,paletteIndex,visibility*(1.0-fog.x)*fog.y);
+  return Halo(pos,disc,paletteIndex,visibility);
 }
 @vertex fn haloVertex(@builtin(vertex_index) i:u32, @location(0) source:vec4f,
                       @location(1) paletteIndex:f32) -> Halo {
@@ -445,38 +491,70 @@ async function buildPipelines({device,format}) {
   return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline};
 }
 
-// Keep the original map words for game logic. Instances and halos share the
-// same cell index so the retail traversal selects both from the same records.
+// Group MAP cells by their shared block geometry; each group is drawn as instances.
 function districtDraws({width,tiles,mesh}) {
-  const cells = new Array(tiles.length), offsets = new Float32Array(2*tiles.length), halos = [];
+  const groups = new Map(), halos = [];
+  const bounds = mesh.ranges.map(({first,count},id) => {
+    if (!count) return null;
+    let minX=Infinity, minY=Infinity, minZ=Infinity, maxX=-Infinity, maxY=-Infinity, maxZ=-Infinity;
+    for (let at=first*12; at<(first+count)*12; at+=12) {
+      const x = mesh.vertices[at], y = mesh.vertices[at+1], z = mesh.vertices[at+2];
+      const billboard = mesh.vertices[at+11] === -4 ? Math.abs(mesh.vertices[at+9]) : 0;
+      minX = Math.min(minX,x-billboard); maxX = Math.max(maxX,x+billboard);
+      minY = Math.min(minY,y-billboard); maxY = Math.max(maxY,y+billboard);
+      minZ = Math.min(minZ,z); maxZ = Math.max(maxZ,z);
+    }
+    for (const [x,y,z,,,radius] of mesh.blockLights[id]) {
+      if (radius <= 0) continue;
+      minX = Math.min(minX,x-radius); maxX = Math.max(maxX,x+radius);
+      minY = Math.min(minY,y-radius); maxY = Math.max(maxY,y+radius);
+      minZ = Math.min(minZ,z-radius); maxZ = Math.max(maxZ,z+radius);
+    }
+    return {x:(minX+maxX)/2,y:(minY+maxY)/2,z:(minZ+maxZ)/2,
+      radius:Math.hypot(maxX-minX,maxY-minY,maxZ-minZ)/2};
+  });
   tiles.forEach((tile,i) => {
     const id = (tile&127)*4+((tile>>>8)&3);
     const range = mesh.ranges[id];
     if (!range?.count) return;
     const x = i%width*512, y = Math.floor(i/width)*512;
-    offsets.set([x,y],2*i);
     const haloFirst = halos.length/5;
     for (const [bx,by,z,,color,radius] of mesh.blockLights[id]) {
-      halos.push(x+bx,y+by,z,radius,color);
+      if (radius > 0) halos.push(x+bx,y+by,z,radius,color);
     }
-    cells[i] = {...range,instance:i,haloFirst,haloCount:halos.length/5-haloFirst};
+    if (!groups.has(id)) groups.set(id,{...range,bounds:bounds[id],cells:[]});
+    groups.get(id).cells.push({x,y,haloFirst,haloCount:halos.length/5-haloFirst});
   });
-  return {cells,offsets,halos:Float32Array.from(halos)};
+  return {groups:[...groups.values()],halos:Float32Array.from(halos)};
 }
 
-function visibleDistrict(cells, district, camera) {
-  const visible = [];
-  const cx = Math.floor(camera.x/512), cy = Math.floor(camera.y/512);
-  for (const [dx,dy] of district.start.viewCells) {
-    const x = cx+dx, y = cy+dy;
-    if (x < 0 || x >= district.width || y < 0 || y >= district.height) continue;
-    const cell = cells[y*district.width+x];
-    if (cell) visible.push(cell);
+function visibleDistrict(groups, camera, sx, sy, instances, halos, visibleHalos) {
+  const visible = [], cos = Math.cos(camera.pitch), sin = Math.sin(camera.pitch);
+  const horizontalMargin = Math.hypot(sx,1), verticalMargin = Math.hypot(sy,1);
+  let instanceCount = 0, haloCount = 0;
+  for (const {first,count,bounds,cells} of groups) {
+    const start = instanceCount;
+    for (const cell of cells) {
+      const x = cell.x+bounds.x-camera.x, y = cell.y+bounds.y-camera.y, z = bounds.z-camera.z;
+      const along = x*camera.fx+y*camera.fy;
+      const depth = along*cos+z*sin;
+      const across = -x*camera.fy+y*camera.fx, up = along*sin-z*cos;
+      if (depth+bounds.radius < 0.5 ||
+          Math.abs(across)*sx > depth+bounds.radius*horizontalMargin ||
+          Math.abs(up)*sy > depth+bounds.radius*verticalMargin) continue;
+      instances[2*instanceCount] = cell.x;
+      instances[2*instanceCount+1] = cell.y;
+      instanceCount++;
+      const begin = cell.haloFirst*5, end = begin+cell.haloCount*5;
+      visibleHalos.set(halos.subarray(begin,end),haloCount*5);
+      haloCount += cell.haloCount;
+    }
+    if (instanceCount > start) visible.push({first,count,instance:start,instances:instanceCount-start});
   }
-  return visible;
+  return {visible,instanceCount,haloCount};
 }
 
-export function createCabView(canvas, {device, context, format}, district, session) {
+export function createCabView(canvas, {device, context, format, postprocess}, district, session) {
   const {mesh, cockpit} = district;
   const resources = [];
   const own = value => { resources.push(value); return value; };
@@ -505,10 +583,11 @@ export function createCabView(canvas, {device, context, format}, district, sessi
   const hdFallback = hdTextures.every(Boolean) ? null : texture(1,1,'rgba8unorm');
   const vertices = buffer(mesh.vertices.byteLength,GPUBufferUsage.VERTEX,mesh.vertices);
   const surfaceNodes = buffer(mesh.surfaceNodes.byteLength,GPUBufferUsage.VERTEX,mesh.surfaceNodes);
-  const {cells,offsets,halos} = districtDraws(district);
-  const instances = buffer(Math.max(8,offsets.byteLength),GPUBufferUsage.VERTEX,offsets.length ? offsets : undefined);
-  const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX,halos) : null;
-  const uniforms = new Float32Array(52);
+  const {groups,halos} = districtDraws(district);
+  const instanceData = new Float32Array(district.tiles.length*2), haloData = new Float32Array(halos.length);
+  const instances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
+  const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
+  const uniforms = new Float32Array(56);
   const headlamps = session.taxi?.headlamps ?? [[-0.36*cabBody.width,cabBody.length/2,8],[0.36*cabBody.width,cabBody.length/2,8]];
   const key = hdTextures[0] ? skylineKey(district.hdSky) : null;
   new Uint32Array(uniforms.buffer).set([...hdTextures.map(image => Number(!!image)),Number(!!key)],36);
@@ -564,7 +643,7 @@ export function createCabView(canvas, {device, context, format}, district, sessi
   ];
 
 
-  let depth, depthView, aspectNow, cloudLayer, cloudView, group;
+  let depth, depthView, aspectNow, cloudLayer, cloudView, group, renderWidth, renderHeight;
   let streetStats;
   function resize(delta=0) {
     const rect = canvas.getBoundingClientRect(), limit = device.limits.maxTextureDimension2D;
@@ -577,8 +656,11 @@ export function createCabView(canvas, {device, context, format}, district, sessi
     const i = Math.max(0,Math.min(sizes.length-1,Math.min(session.resolution,sizes.length-1)+delta));
     session.resolution = i===sizes.length-1 ? Infinity : i;
     const [rw,rh] = sizes[i];
-    if (depth && canvas.width===rw && canvas.height===rh) return;
-    canvas.width = rw; canvas.height = rh;
+    const ow = rw, oh = rh;
+    if (canvas.width !== ow) canvas.width = ow;
+    if (canvas.height !== oh) canvas.height = oh;
+    if (depth && renderWidth===rw && renderHeight===rh) return;
+    renderWidth = rw; renderHeight = rh;
     depth?.destroy();
     depth = device.createTexture({size:[rw,rh],format:depthFormat,usage:GPUTextureUsage.RENDER_ATTACHMENT});
     depthView = depth.createView();
@@ -594,14 +676,18 @@ export function createCabView(canvas, {device, context, format}, district, sessi
     const sx = 1/Math.tan(settings.fov*Math.PI/360), sy = sx*aspectNow;
     const cosPitch = Math.cos(camera.pitch), sinPitch = Math.sin(camera.pitch);
     uniforms[32] = 0.5;
-    const visible = visibleDistrict(cells,district,camera);
-    streetStats = {batches:visible.length,instances:visible.length,vertices:mesh.vertices.length/12};
+    const {visible,instanceCount,haloCount} = visibleDistrict(groups,camera,sx,sy,instanceData,halos,haloData);
+    streetStats = {batches:visible.length,instances:instanceCount,vertices:mesh.vertices.length/12};
+    if (instanceCount) device.queue.writeBuffer(instances,0,instanceData.subarray(0,instanceCount*2));
+    if (haloCount) device.queue.writeBuffer(haloInstances,0,haloData.subarray(0,haloCount*5));
     const heading = car.angle*Math.PI/2880;
     uniforms.set([camera.x,camera.y,camera.z,camera.angle,
       camera.fx,camera.fy,cosPitch,sinPitch,sx,sy,district.width,district.height,
-      canvas.width,canvas.height,Math.sin(heading),Math.cos(heading),...mesh.sky,
+      renderWidth,renderHeight,Math.sin(heading),Math.cos(heading),...mesh.sky,
       car.x,car.y,car.z,car.camera,brightness,wheel,cockpit.wheelHeight,welcome ? cockpit.textY : 0]);
     uniforms[43] = performance.now()/1000;
+    uniforms[52] = settings.upscale;
+    uniforms[53] = settings.sharpen/100;
     for (const [i,[right,front,down]] of headlamps.entries()) {
       const x = car.x+uniforms[14]*(front+1)-uniforms[15]*right;
       const y = car.y+uniforms[15]*(front+1)+uniforms[14]*right;
@@ -615,7 +701,11 @@ export function createCabView(canvas, {device, context, format}, district, sessi
     weather.setBindGroup(0,cloudGroup);
     weather.draw(3);
     weather.end();
-    const pass = encoder.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),
+    const output = context.getCurrentTexture().createView();
+    const filtered = settings.fxaa > 0;
+    if (!filtered) postprocess.release();
+    const target = filtered ? postprocess.target(renderWidth,renderHeight,canvas.width,canvas.height) : output;
+    const pass = encoder.beginRenderPass({colorAttachments:[{view:target,
       loadOp:'clear',storeOp:'store',clearValue:[0,0,0,1]}],depthStencilAttachment:{
       view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
     pass.setBindGroup(0,group);
@@ -624,7 +714,7 @@ export function createCabView(canvas, {device, context, format}, district, sessi
     pass.setVertexBuffer(0,vertices);
     pass.setVertexBuffer(1,instances);
     pass.setVertexBuffer(2,surfaceNodes);
-    for (const {first,count,instance} of visible) pass.draw(count,1,first,instance);
+    for (const {first,count,instance,instances:countInstances} of visible) pass.draw(count,countInstances,first,instance);
     const eyeX = camera.x-car.x, eyeY = camera.y-car.y;
     const eyeAhead = eyeX*uniforms[14]+eyeY*uniforms[15];
     const eyeAcross = eyeY*uniforms[14]-eyeX*uniforms[15];
@@ -635,11 +725,9 @@ export function createCabView(canvas, {device, context, format}, district, sessi
     } else if (car.camera && outsideBody) {
       pass.setPipeline(bodyPipeline); pass.draw(36);
     }
-    if (haloInstances) {
+    if (haloCount) {
       pass.setPipeline(haloPipeline); pass.setVertexBuffer(0,haloInstances);
-      for (const {haloFirst,haloCount} of visible) {
-        if (haloCount) pass.draw(6,haloCount,0,haloFirst);
-      }
+      pass.draw(6,haloCount);
     }
     if (car.headlights && car.camera) {
       pass.setPipeline(session.pipelines.headlampPipeline); pass.draw(6,headlamps.length);
@@ -649,11 +737,20 @@ export function createCabView(canvas, {device, context, format}, district, sessi
       const direction = [(-uniforms[15]*camera.fx+uniforms[14]*camera.fy)*cosPitch,
         (uniforms[14]*camera.fx+uniforms[15]*camera.fy)*cosPitch,sinPitch];
       session.taxi.draw(pass,session.pipelines.taxi.glass,true,direction);
-      if (welcome) { pass.setPipeline(session.pipelines.welcomePipeline); pass.draw(3); }
     } else if (!car.camera) { pass.setPipeline(cabinPipeline); pass.draw(36); }
-    pass.end(); device.queue.submit([encoder.finish()]);
+    pass.end();
+    if (filtered) postprocess.present(encoder,output,{...settings,upscale:1,sharpen:0});
+    if (session.taxi && welcome) {
+      const overlay = encoder.beginRenderPass({colorAttachments:[{view:output,loadOp:'load',storeOp:'store'}],
+        depthStencilAttachment:{view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
+      overlay.setBindGroup(0,group);
+      overlay.setPipeline(session.pipelines.welcomePipeline);
+      overlay.draw(3);
+      overlay.end();
+    }
+    device.queue.submit([encoder.finish()]);
   }
-  return {resize,draw,tickMaterials,cameraFor:car => cameraPose(car,district),
+  return {resize,draw,tickMaterials,resolution:() => [renderWidth,renderHeight],cameraFor:car => cameraPose(car,district),
     stats:() => streetStats ?? {instances:0,batches:0,vertices:mesh.vertices.length/12},
     close() { depth?.destroy(); cloudLayer?.destroy(); for (const item of resources) item.destroy(); }};
 }

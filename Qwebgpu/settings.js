@@ -2,11 +2,15 @@ const storageKey = 'qwebgpu.settings';
 let saved;
 try { saved = JSON.parse(localStorage.getItem(storageKey)); } catch {}
 const volume = n => Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 100;
+const strength = n => Number.isFinite(n) ? Math.min(100,Math.max(0,Math.round(n))) : 0;
 export const settings = {
   fov: Number.isFinite(saved?.fov) ? Math.max(60,Math.min(120,Math.round(saved.fov))) : 110,
   invertY: saved?.invertY === true,
   effects: volume(saved?.effects),
   cd: volume(saved?.cd),
+  upscale: Number.isFinite(saved?.upscale) ? Math.min(4,Math.max(1,Math.round(saved.upscale))) : 1,
+  fxaa: strength(saved?.fxaa),
+  sharpen: strength(saved?.sharpen),
 };
 
 export const settingsPanel = document.querySelector('#settingsPanel');
@@ -38,11 +42,14 @@ invert.addEventListener('change', () => {
   settings.invertY = invert.checked;
   save();
 });
-for (const [name,id,unit] of [['effects','effectsVolume','%'],['cd','cdVolume','%'],['fov','fov','°']]) {
+for (const [name,id,unit] of [['effects','effectsVolume','%'],['cd','cdVolume','%'],['fov','fov','°'],
+  ['upscale','upscale','×'],['fxaa','fxaa','%'],['sharpen','sharpen','%']]) {
   const slider = document.getElementById(id);
   const output = document.querySelector('output[for="' + id + '"]');
   const paint = () => {
-    output.value = slider.value + unit;
+    const off = name === 'upscale' ? slider.valueAsNumber === 1 :
+      (name === 'fxaa' || name === 'sharpen') && slider.valueAsNumber === 0;
+    output.value = off ? 'Off' : slider.value + unit;
     slider.style.setProperty('--level', (slider.valueAsNumber-slider.min)*100/(slider.max-slider.min)+'%');
     slider.setAttribute('aria-valuetext', output.value);
   };

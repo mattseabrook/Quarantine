@@ -1,10 +1,10 @@
-; Analyzer entry: 00025e30
-; Analyzer symbol: FUN_00025e30
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00025E30
+; Semantic name: resolve_player_sprite_contact
+; Evidence: Dispatches the first projected sprite candidate using its OBJ class; classes 4-9 slide, stop, bounce or slow.
 
-%macro emit_function_00025e30_part_00 0
+%macro emit_resolve_player_sprite_contact_part_00 0
     %%fragment_start:
-function_00025e30:
+resolve_player_sprite_contact:
     %%insn_00025e30_25E30:
     push ebx ; 00025E30 53
     %if ($ - %%insn_00025e30_25E30) > 1

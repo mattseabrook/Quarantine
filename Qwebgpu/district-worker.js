@@ -263,8 +263,11 @@ async function prepare(part, files, start) {
   const supportFloors = blocks.map(block => block.faces.filter(face => face.floor && face.vertices.length >= 3)
     .map(({vertices:[a,,c]}) => [a[0],a[1],c[0],c[1],a[2]])
     .filter(([,y0,,y1]) => y0 < y1));
+  const ceilings = blocks.map(block => block.faces.filter(face => face.floor && face.vertices.length >= 3)
+    .map(({vertices:[a,,c]}) => [c[0],c[1],a[0],a[1],a[2]])
+    .filter(([,y0,,y1]) => y0 < y1));
   const diagnostics = {blocks,flags,bankSizes:banks.map(bank => bank.length)};
-  return {value:{mesh,palette,walls,wallOffsets,wallSides,wallDepth,bspNodes,supportFloors,diagnostics},
+  return {value:{mesh,palette,walls,wallOffsets,wallSides,wallDepth,bspNodes,supportFloors,ceilings,diagnostics},
     transfer:[mesh.atlas.buffer,mesh.vertices.buffer,palette.buffer,walls.buffer,wallOffsets.buffer,
       wallSides.buffer,wallDepth.buffer,bspNodes.buffer,mesh.surfaceNodes.buffer,flags.buffer]};
 }

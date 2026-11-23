@@ -84,11 +84,13 @@ cloud highlights remain visible overhead as the sky darkens.
 | --- | --- |
 | W, S or Up, Down | Apply forward thrust or brake. Holding S through a stop engages reverse. Release both to coast. |
 | A, D or Left, Right | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
-| Mouse | Click the driving view to capture the pointer. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally to orbit and vertically to look up or down. |
+| Alt | Suppress steering input and let the wheel center, as in the original keyboard path. |
+| Z | Trigger the original hover impulse to hop over obstacles. |
+| Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab; the vertical boom stops near the cab's bottom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit. |
 | V | Toggle the two white headlights. New Game starts with them on. |
-| Mouse wheel | Zoom continuously in chase view. Roll forward to move closer. The distance is remembered when switching views. |
-| M | Open the city map. Arrow keys select a bay in that direction. M or Escape returns to driving. |
+| Mouse wheel | Zoom continuously in chase view, including while the pointer is captured. Roll forward to move closer. The distance is remembered when switching views. |
+| M | Open the city map. Click a colored bay or use the arrow keys to select one. M or Escape returns to driving. |
 | C or ] | Advance CD music to the next track, wrapping to track 02. C matches the DOS next-track control. |
 | [ | Select the previous CD track. |
 | P | Pause or resume CD music. |
@@ -102,12 +104,26 @@ display's native pixel dimensions, subject to the device's texture limit.
 Open Settings with tilde to set horizontal FOV from 60° to 120° in one-degree
 steps. The default is 110° in cockpit and chase. The zoom wheel controls the
 chase boom independently. It shortens when it crosses a wall or deck.
+At minimum zoom it sits just above the modeled cab bottom; at maximum zoom
+its boom reaches 260 units and twice the former ground-relative height when
+unobstructed.
+
+Settings also offers xBR-style texture upscaling from 2× to 4×, FXAA and
+texture contrast-adaptive sharpening. Each starts off and is saved separately.
+Texture processing applies to world materials and the taxi's base-color maps,
+including at native gameplay resolution. The scaler uses a single-pass 45°
+corner rule, not the full xBRz algorithm; taxi upscaling applies when the
+texture is magnified. FXAA applies to the gameplay render only. None of these
+effects filter the title, menus, map, video or separate Wayfinder canvas.
 
 The cockpit pivots above and behind the GLB's steering wheel. The renderer
 uniformly fits the lowest tyre and the modeled eye to SKIPIT's 20-unit
 road-to-eye distance. This makes the taxi about 27 world units high. The Core's
 57.75- and 77-unit stop signs use their original placement scales. Chase orbits
-the fitted model's vertical center. Driving uses SKIPIT's separate 120-unit wall probes.
+the fitted model's vertical center. Driving sweeps the fitted model's oriented
+body bounds against wall runs and uses its footprint for floor support, rather
+than SKIPIT's 120-unit wall probes. This is a deliberate model-specific override,
+not per-triangle collision.
 The two white beams originate at the front faces of the GLB headlamp lenses and
 follow the cab heading in either view. They illuminate indexed roads, walls and
 placed sprites. The lenses and their depth-tested halos are visible from the front.
@@ -128,22 +144,57 @@ head-on wall response requests the impact cue at `0x26489`.
 The city map assembles the four `KEMOMAP*.ZZZ` images and stamps the district's
 `BAYn.DAT` locations using `MAPICONS.SPR`. The cab marker follows the heading
 table in SKIPIT. Arrow keys select the nearest eligible bay within the chosen
-90° sector, and the map scrolls toward it. The selected bay persists when the
-map is reopened during the drive. Cockpit Wayfinder guidance remains open.
+90° sector; clicking a visible colored icon also selects it. The upper 160
+lines scroll in single-pixel steps. The fixed
+instrument strip shows the selected bay type, district and relative distance
+using the retail map font. The selection carries into the cockpit Wayfinder,
+which uses the eight direction lamps and range digits from `WAYP2.SPR`.
 
 Gameplay targets **60 presentations per second** with one full-detail path.
 Three workers prepare the map and lookup tables, world geometry and materials,
 and cockpit art concurrently. The GPU clips, projects, textures and
 depth-tests the world, draws repeated blocks as instances, applies the district
 wall material's backface, transparency and collision flags, and draws the
-taxi from `HD/cars/taxi/taxi.glb`. Installations without the GLB use the retail-art cabin and exterior box. The street and its fixture halos use SKIPIT's 49-cell neighborhood around the
-camera. The GPU clips geometry to the selected view and shades it with the
-district palette. A separate 35 Hz fixed step runs
+taxi from `HD/cars/taxi/taxi.glb`. Installations without the GLB use the retail-art cabin and exterior box. The browser renders the full finite MAP rather than SKIPIT's 49-cell neighborhood, grouping shared geometry into frustum-culled instances. Distant surfaces retain the dark palette and haze, while illuminated surfaces, emitters and halos remain visible. A separate 35 Hz fixed step runs
 the keyboard driving equations. DOS used a measured frame-rate divisor there.
 The intro and wrapper videos retain their own media clocks.
 
-Settings saves horizontal FOV, vertical mouse inversion and separate Sound FX and CD audio
-volumes in this browser. Both volumes start at 100%. Sound FX includes the
+### Driving fidelity and engine state
+
+The original initializes its driving variables at `0x1AD00` and updates them at
+`0x1AD98`. Its steering input and centering rates are respectively 1000 and
+1536 per frame-rate divisor. These are the high words of overlapping 32-bit
+loads at `0x1AF1E` and `0x1AFD4`; an earlier reading reversed them. It
+also maintains rotational displacement and rate at DS:1340C and DS:13428,
+with a separate skid flag and previous displacement. The browser now carries
+those variables through the steering, damping and thrust calculations. It
+does not yet reproduce all the game-state events that can affect them, and
+its fixed 35 Hz step replaces the original measured divisor. Handling,
+including impacts, terrain effects and hover landing interactions,
+is therefore not established as 1:1.
+Hover ascent now stops at reverse-facing overhead floors using the modeled cab
+footprint. SKIPIT instead queries the player position with a 50-unit clearance;
+landing bounces and other hover state remain incomplete.
+
+SKIPIT loads per-district collision and trigger tables and initializes a
+128-byte district state array with district-specific values at `0x45340`.
+Its save routines serialize 104 address/size ranges, including an array of 50
+124-byte records, and restore runtime references afterward. Qwebgpu instead
+keeps browser objects for the current car, loaded district, waypoint and
+session; it loads the collision/trigger tables but does not yet implement the
+original district state machine or save payload restoration. Resume retains
+the browser session, not a complete DOS game state.
+
+Placed street sprites are rendered but are not themselves included in the
+browser's wall collision arrays; a separate solid wall run can still block a
+cab at the same location. SKIPIT reads sprite interaction classes from
+`OBJ%d.DAT`: classes 4–6 slide, 7 stops, 8 bounces, and 9 slows the cab.
+The exact render-queue timing and other interaction classes remain to be
+implemented, so fixture behavior is not yet claimed to match SKIPIT.
+
+Settings saves horizontal FOV, vertical mouse inversion, image processing and separate Sound FX and CD audio
+volumes under `qwebgpu.settings` in localStorage for the current browser origin.
+Both volumes start at 100%. Sound FX includes the
 engine, impacts, menu sounds, voices and AVI audio. CD audio controls the
 driving tracks and intro CD music. Changing the Sound FX slider plays the menu
 click as a preview. Driving pauses while Settings is open.
@@ -174,6 +225,10 @@ ssh -N -L 8000:127.0.0.1:8000 user@arch-host
 | `0x2B084` | Shows `IEGLOW.IMG` and plays `HYPNO.VOC`. |
 | `0x2B0FC` | Plays `TITLE.FLI` up to four times, starts `QTITLE.VOC` once, and polls for input. |
 | `0x2AA7C`–`0x2ADFB` | Draws OPTION.IMG and the selected transparent OPTIONC.SPR overlay at coordinates read from the executable. Cold-start navigation skips Resume and Save. |
+
+If browser autoplay blocks audio, the two splash screens continue silently
+after the original 180-retrace no-sound delay instead of waiting for input.
+Audio becomes available after a user gesture.
 | `0x46FC0`, `0x471B4`, `0x4756C`, `0x4779C` | Opens LOADSCR.IMG, reads the five local save headers and draws their descriptions and prompts with SAVEFONT.SPR and ASKFONT.SPR. |
 | `0x2C198` | Fades in WAIT.IMG on entry to the game-loading path. |
 | `0x2C0F8`, `0x4289C`, `0x310DC` | Reads the district filenames and spawn from SKIPIT.EXE. New Game selects KCITY, loads the map, block geometry and district table pages, and starts at cell (135, 19). |
@@ -223,7 +278,7 @@ sequences. Wall contact spans a complete BLK run. The cab follows supporting
 floors using a center probe and four corner probes. Full airborne motion and
 pixel-level parity remain open. [Spawn geometry trace](../README.md#the-structure-east-of-the-new-game-spawn).
 
-The darker street uses the full district sky tint. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The GPU draws world-space halos over both types of fixture. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
+The darker street uses the full district sky tint; chrome reflections use a more neutral, subdued version. Core streetlights cast the color sampled from each fixture’s artwork. Stop signs cast red from their electronic lettering. The yellow wall panels add a broad warm spill onto the road and cab, with softer highlights on the cab materials. Red wall and overhead bulbs also add a broader cab-only contribution, leaving the street lighting unchanged. The GPU draws world-space halos over the fixtures. [Sky palette trace and lighting parameters](../README.md#sky-color-and-street-lighting).
 
 ## AVI playback
 

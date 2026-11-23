@@ -1,10 +1,10 @@
-; Analyzer entry: 000316c0
-; Analyzer symbol: FUN_000316c0
-; Boundary and name are provisional until independently verified.
+; Runtime address: 000316C0
+; Semantic name: update_player_vertical_motion
+; Evidence: Queries supporting floors and ceilings, integrates falling and hover motion, and handles landing state.
 
-%macro emit_function_000316c0_part_00 0
+%macro emit_update_player_vertical_motion_part_00 0
     %%fragment_start:
-function_000316c0:
+update_player_vertical_motion:
     %%insn_000316c0_316C0:
     push ebx ; 000316C0 53
     %if ($ - %%insn_000316c0_316C0) > 1

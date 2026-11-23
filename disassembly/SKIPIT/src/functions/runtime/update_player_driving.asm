@@ -1,10 +1,10 @@
-; Analyzer entry: 0001ad98
-; Analyzer symbol: FUN_0001ad98
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0001AD98
+; Semantic name: update_player_driving
+; Evidence: Integrates keyboard thrust, brake, steering, yaw displacement and movement.
 
-%macro emit_function_0001ad98_part_00 0
+%macro emit_update_player_driving_part_00 0
     %%fragment_start:
-function_0001ad98:
+update_player_driving:
     %%insn_0001ad98_1AD98:
     push ebx ; 0001AD98 53
     %if ($ - %%insn_0001ad98_1AD98) > 1

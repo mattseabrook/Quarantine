@@ -1,10 +1,10 @@
-; Analyzer entry: 00031f44
-; Analyzer symbol: FUN_00031f44
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00031F44
+; Semantic name: start_player_hover
+; Evidence: If hover is inactive, sets the initial vertical impulse, ascent direction and landing counter.
 
-%macro emit_function_00031f44_part_00 0
+%macro emit_start_player_hover_part_00 0
     %%fragment_start:
-function_00031f44:
+start_player_hover:
     %%insn_00031f44_31F44:
     push ebx ; 00031F44 53
     %if ($ - %%insn_00031f44_31F44) > 1

@@ -8,6 +8,8 @@ const cabinYawLimit = 100*Math.PI/180;
 const cabinPitchLimit = 45*Math.PI/180;
 const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
+const fallbackBounds = Object.freeze({left:-cabBody.width/2,right:cabBody.width/2,
+  back:-cabBody.length/2,front:cabBody.length/2,top:cabBody.base-cabBody.height,bottom:cabBody.base});
 function sine(table, angle) {
   const a = wrap(angle);
   if (a <= quarter) return table[a];
@@ -18,29 +20,65 @@ function sine(table, angle) {
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
-    supportZ:start.z, fallSpeed:0, headlights:true,
-    speed: 0, steering: 0, camera: 0, lookYaw: 0, lookPitch: 0, orbitYaw: 0, chasePitch: null, chaseDistance: chaseRange.middle};
+    supportZ:start.z, fallSpeed:0, hover:0, headlights:true,
+    speed: 0, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
+    camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
+    chasePitch: null, chaseDistance: chaseRange.middle};
 }
 
-function chaseLift(distance) {
+export function startHover(car) {
+  if (car.hover) return;
+  car.hover = -1;
+  car.fallSpeed = 32 << 4;
+}
+
+function chaseLift(distance, centerZ, bottom) {
   const {near,middle,far} = chaseRange;
-  return distance <= middle ? 15+11*(distance-near)/(middle-near) :
-    26+18*(distance-middle)/(far-middle);
+  const nearLift = centerZ-bottom+2;
+  const farLift = 88+bottom-centerZ;
+  return distance <= middle ? nearLift+(26-nearLift)*(distance-near)/(middle-near) :
+    26+(farLift-26)*(distance-middle)/(far-middle);
 }
 
-export function turnView(car, movementX, movementY = 0) {
+function chasePitch(car, distance, centerZ, bottom) {
+  const lowest = Math.atan2(centerZ-bottom+2,distance);
+  const pitch = car.chasePitch ?? Math.atan2(chaseLift(distance,centerZ,bottom),distance);
+  return Math.max(lowest,Math.min(chasePitchLimit,pitch));
+}
+
+export function turnView(car, movementX, movementY = 0, district) {
   const delta = -movementX*0.0025;
   if (car.camera) {
-    car.orbitYaw = (car.orbitYaw+delta) % (2*Math.PI);
+    car.chaseYaw = ((car.chaseYaw ?? car.angle*Math.PI/2880)+delta) % (2*Math.PI);
+    if (movementX || movementY) car.chaseIdle = 0;
     if (movementY) {
       const distance = car.chaseDistance;
-      const pitch = car.chasePitch ?? Math.atan2(chaseLift(distance),distance);
-      car.chasePitch = Math.max(-chasePitchLimit,Math.min(chasePitchLimit,pitch+movementY*0.0025));
+      const centerZ = district?.taxiCenterZ ?? (cabBody.base-cabBody.height/2);
+      const bottom = (district?.taxiBounds ?? fallbackBounds).bottom;
+      const pitch = chasePitch(car,distance,centerZ,bottom);
+      const lowest = Math.atan2(centerZ-bottom+2,distance);
+      car.chasePitch = Math.max(lowest,Math.min(chasePitchLimit,pitch+movementY*0.0025));
     }
   } else {
     car.lookYaw = Math.max(-cabinYawLimit,Math.min(cabinYawLimit,car.lookYaw+delta));
     car.lookPitch = Math.max(-cabinPitchLimit,Math.min(cabinPitchLimit,car.lookPitch+movementY*0.0025));
   }
+}
+
+export function updateChaseCamera(car, heading, elapsed) {
+  if (!car.camera) return;
+  const target = heading*Math.PI/2880;
+  car.chaseYaw ??= target;
+  const difference = Math.atan2(Math.sin(target-car.chaseYaw),Math.cos(target-car.chaseYaw));
+  if (Math.abs(difference) < 0.0001) {
+    car.chaseYaw = target;
+    car.chaseIdle = 0;
+    return;
+  }
+  const previous = car.chaseIdle;
+  car.chaseIdle += elapsed;
+  const correctionTime = Math.max(0,car.chaseIdle-2)-Math.max(0,previous-2);
+  if (correctionTime > 0) car.chaseYaw += difference*(1-Math.exp(-2.5*correctionTime));
 }
 
 export function zoomChase(car,pixels) {
@@ -97,10 +135,8 @@ function chaseClearance(district,x,y,z,dx,dy,dz) {
   return Math.min(1,Math.max(0,limit-margin));
 }
 
-// Sweep each leading probe from its old position to its proposed position.
-// A segment intersection catches even a zero-thickness wall between two ticks.
-const probeAngles = [-400,400,-208,208,0];
-function firstWallHit(district,x,y,dx,dy,z) {
+// Sweep points on the fitted body perimeter against zero-thickness wall runs.
+function firstWallHit(district,x,y,dx,dy,zTop,zBottom) {
   let hit = null;
   function record(t,nx,ny) {
     if (t >= 0 && t <= 1 && (!hit || t < hit.t)) hit = {t,nx,ny};
@@ -122,7 +158,7 @@ function firstWallHit(district,x,y,dx,dy,z) {
       if (!(tile&127)) continue;
       const id = (tile&127)*4+((tile>>>8)&3);
       for (let at=wallOffsets[id]; at<wallOffsets[id+1]; at+=6) {
-        if (z <= walls[at+4] || z >= walls[at+5]) continue;
+        if (zBottom <= walls[at+4] || zTop >= walls[at+5]) continue;
         const wx = walls[at+2], wy = walls[at+3], det = dx*wy-dy*wx;
         if (det === 0 || (det > 0 && !(wallSides[at/6]&2))) continue;
         const ax = cx*512+walls[at]-x, ay = cy*512+walls[at+1]-y;
@@ -138,16 +174,65 @@ function firstWallHit(district,x,y,dx,dy,z) {
   return hit;
 }
 
-function sweepCab(car,district,dx,dy,oldAngle,newAngle,reverse) {
+function sweepCab(car,district,dx,dy,oldAngle,newAngle) {
   let first = null;
-  const table = district.start.sine;
-  for (const offset of probeAngles) {
-    const a = oldAngle+offset+(reverse ? 2*quarter : 0);
-    const b = newAngle+offset+(reverse ? 2*quarter : 0);
-    const px = 120*sine(table,a)>>11, py = 120*sine(table,a+quarter)>>11;
-    const vx = dx+(120*sine(table,b)>>11)-px, vy = dy+(120*sine(table,b+quarter)>>11)-py;
-    const hit = firstWallHit(district,car.x+px,car.y+py,vx,vy,car.z);
+  const bounds = district.taxiBounds ?? fallbackBounds;
+  const a = oldAngle*Math.PI/2880, b = newAngle*Math.PI/2880;
+  const sa = Math.sin(a), ca = Math.cos(a), sb = Math.sin(b), cb = Math.cos(b);
+  function probe(right,forward) {
+    const px = -ca*right+sa*forward, py = sa*right+ca*forward;
+    const vx = dx-cb*right+sb*forward-px;
+    const vy = dy+sb*right+cb*forward-py;
+    const hit = firstWallHit(district,car.x+px,car.y+py,vx,vy,car.z+bounds.top,car.z+bounds.bottom);
     if (hit && (!first || hit.t < first.t)) first = hit;
+  }
+  for (const [r0,f0,r1,f1] of [
+    [bounds.left,bounds.back,bounds.right,bounds.back],
+    [bounds.right,bounds.back,bounds.right,bounds.front],
+    [bounds.right,bounds.front,bounds.left,bounds.front],
+    [bounds.left,bounds.front,bounds.left,bounds.back],
+  ]) {
+    const count = Math.ceil(Math.hypot(r1-r0,f1-f0)/4);
+    for (let i=0; i<count; i++) {
+      const t = i/count;
+      probe(r0+(r1-r0)*t,f0+(f1-f0)*t);
+    }
+  }
+  // A short wall can enter between perimeter probes. Sweep its endpoints in
+  // cab-local space as well, so finite wall ends cannot slip through the body.
+  const radius = Math.hypot(Math.max(-bounds.left,bounds.right),Math.max(-bounds.back,bounds.front));
+  const left = Math.max(0,Math.floor((Math.min(car.x,car.x+dx)-radius)/512)-1);
+  const right = Math.min(district.width-1,Math.floor((Math.max(car.x,car.x+dx)+radius)/512)+1);
+  const top = Math.max(0,Math.floor((Math.min(car.y,car.y+dy)-radius)/512)-1);
+  const bottom = Math.min(district.height-1,Math.floor((Math.max(car.y,car.y+dy)+radius)/512)+1);
+  for (let cy=top; cy<=bottom; cy++) for (let cx=left; cx<=right; cx++) {
+    const tile = district.tiles[cy*district.width+cx];
+    if (!(tile&127)) continue;
+    const id = (tile&127)*4+((tile>>>8)&3);
+    for (let at=district.wallOffsets[id]; at<district.wallOffsets[id+1]; at+=6) {
+      const walls = district.walls, wx = walls[at+2], wy = walls[at+3];
+      if (car.z+bounds.bottom <= walls[at+4] || car.z+bounds.top >= walls[at+5]) continue;
+      for (const end of [0,1]) {
+        const x = cx*512+walls[at]+end*wx-car.x, y = cy*512+walls[at+1]+end*wy-car.y;
+        const p = [-ca*x+sa*y,sa*x+ca*y];
+        const q = [-cb*(x-dx)+sb*(y-dy),sb*(x-dx)+cb*(y-dy)];
+        const vx = dx-cb*p[0]+sb*p[1]-x, vy = dy+sb*p[0]+cb*p[1]-y;
+        if (vx*wy-vy*wx > 0 && !(district.wallSides[at/6]&2)) continue;
+        if (p[0] >= bounds.left && p[0] <= bounds.right && p[1] >= bounds.back && p[1] <= bounds.front) continue;
+        let enter = 0, exit = 1;
+        for (const [start,finish,min,max] of [[p[0],q[0],bounds.left,bounds.right],[p[1],q[1],bounds.back,bounds.front]]) {
+          const d = finish-start;
+          if (!d) { if (start < min || start > max) exit = -1; continue; }
+          const t0 = (min-start)/d, t1 = (max-start)/d;
+          enter = Math.max(enter,Math.min(t0,t1));
+          exit = Math.min(exit,Math.max(t0,t1));
+        }
+        if (enter <= exit && enter <= 1 && (!first || enter < first.t)) {
+          const length = Math.hypot(wx,wy);
+          first = {t:enter,nx:-wy/length,ny:wx/length};
+        }
+      }
+    }
   }
   return first;
 }
@@ -165,17 +250,64 @@ function floorBelow(district,x,y,z) {
   return floor === 32000 ? 0 : floor;
 }
 
+function ceilingBetween(district,x,y,top,nextTop) {
+  const cx = x>>9, cy = y>>9;
+  if (cx < 0 || cy < 0 || cx >= district.width || cy >= district.height) return null;
+  const localX = x&511, localY = y&511;
+  let ceiling = null;
+  for (const [x0,y0,x1,y1,height] of district.ceilings[district.tiles[cy*district.width+cx]&127]) {
+    if (localX >= x0 && localX <= x1 && localY >= y0 && localY <= y1 &&
+        height <= top && height >= nextTop && (ceiling === null || height > ceiling)) ceiling = height;
+  }
+  return ceiling;
+}
+
 function followFloor(car,district) {
-  const {sine:table} = district.start;
+  const bounds = district.taxiBounds ?? fallbackBounds;
+  const angle = car.angle*Math.PI/2880, sin = Math.sin(angle), cos = Math.cos(angle);
   let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
-  for (const offset of [-400,400,2480,3280]) {
-    const a = car.angle+offset;
-    const x = Math.trunc(car.x)+(100*sine(table,a)>>11);
-    const y = Math.trunc(car.y)+(100*sine(table,a+quarter)>>11);
+  for (const [right,forward] of [[bounds.left,bounds.back],[bounds.right,bounds.back],
+    [bounds.left,bounds.front],[bounds.right,bounds.front]]) {
+    const x = Math.trunc(car.x-cos*right+sin*forward);
+    const y = Math.trunc(car.y+sin*right+cos*forward);
     const height = floorBelow(district,x,y,car.z)-rideHeight;
     support = Math.min(support,height < car.supportZ-20 ? car.supportZ : height);
   }
   car.supportZ = support;
+  if (car.hover < 0) {
+    const nextZ = car.z-(car.fallSpeed >> 6);
+    let ceiling = ceilingBetween(district,car.x,car.y,car.z+bounds.top,nextZ+bounds.top);
+    for (const [right,forward] of [[bounds.left,bounds.back],[bounds.right,bounds.back],
+      [bounds.left,bounds.front],[bounds.right,bounds.front]]) {
+      const x = Math.trunc(car.x-cos*right+sin*forward);
+      const y = Math.trunc(car.y+sin*right+cos*forward);
+      const height = ceilingBetween(district,x,y,car.z+bounds.top,nextZ+bounds.top);
+      if (height !== null && (ceiling === null || height > ceiling)) ceiling = height;
+    }
+    if (ceiling !== null) {
+      car.z = ceiling-bounds.top;
+      car.fallSpeed = 0;
+      car.hover = 1;
+      return;
+    }
+    car.z = nextZ;
+    car.fallSpeed -= 192;
+    if (car.fallSpeed < 0) {
+      car.fallSpeed = 0;
+      car.hover = 1;
+    }
+    return;
+  }
+  if (car.hover > 0) {
+    car.z += car.fallSpeed >> 6;
+    if (car.fallSpeed < 768) car.fallSpeed += 192;
+    if (car.z >= support) {
+      car.z = support;
+      car.fallSpeed = 0;
+      car.hover = 0;
+    }
+    return;
+  }
   if (car.z < support) {
     // DS:FAE0 is entry 160 of the rate-adjusted table built at 0x108BA.
     car.fallSpeed += Math.trunc(160*12/ticksPerSecond);
@@ -195,23 +327,28 @@ export function driveTick(car, district, keys) {
 function moveCab(car, district, keys) {
   const hz = ticksPerSecond;
   const speed = car.speed >> 8;
+  const table = district.start.sine;
+  const alignment = Math.abs(sine(table,(car.yawSlip >> 2)+quarter) >> 3);
   if (keys.has('KeyW') || keys.has('ArrowUp')) {
     const band = Math.max(0, Math.min(district.start.thrust.length-1, speed >> 5));
-    const impulse = Math.trunc(256*district.start.thrust[band]/hz);
+    const impulse = Math.trunc(alignment*district.start.thrust[band]/hz);
     car.speed += impulse;
     if (car.speed < 0) car.speed += impulse;
   } else if (keys.has('KeyS') || keys.has('ArrowDown')) {
-    car.speed = Math.max(-100*256, car.speed + Math.trunc(-976/hz)*64);
+    car.speed += Math.trunc(-976/hz)*64;
   } else {
+    car.skidMode = false;
     car.speed -= Math.sign(car.speed)*Math.min(Math.abs(car.speed),256);
   }
+  car.speed = Math.max(-100*256,car.speed);
 
   const turn = Math.trunc(1000/hz), center = Math.trunc(1536/hz);
+  const alt = keys.has('AltLeft') || keys.has('AltRight');
   // Left has priority when both directions are down (0x1AF0C).
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) {
+  if (!alt && (keys.has('KeyA') || keys.has('ArrowLeft'))) {
     car.steering = Math.min(480, car.steering+turn);
     if (car.steering < 0) car.steering = Math.min(0, car.steering+center);
-  } else if (keys.has('KeyD') || keys.has('ArrowRight')) {
+  } else if (!alt && (keys.has('KeyD') || keys.has('ArrowRight'))) {
     car.steering = Math.max(-480, car.steering-turn);
     if (car.steering > 0) car.steering = Math.max(0, car.steering-center);
   } else {
@@ -219,28 +356,58 @@ function moveCab(car, district, keys) {
   }
   const velocity = car.speed >> 8;
   const oldAngle = car.angle;
-  const rotation = Math.trunc(velocity*car.steering/hz) >> 6;
+  let heading = oldAngle;
+  if (car.skidMode && car.steering) {
+    car.yawSlipRate += Math.trunc(Math.trunc(3*car.steering*alignment/75)/hz) >> 4;
+  } else if (velocity > 10) {
+    const damping = Math.trunc(320/hz);
+    car.yawSlipRate -= Math.sign(car.yawSlip)*damping;
+    if ((car.previousYawSlip ^ car.yawSlip) < 0) {
+      car.yawSlipRate >>= 1;
+      if (car.yawSlipRate && Math.abs(car.yawSlipRate) < 2*damping) {
+        car.yawSlipRate = 0;
+        car.yawSlip = 0;
+      }
+    }
+  } else {
+    heading += car.yawSlip >> 2;
+    car.yawSlip = 0;
+    car.yawSlipRate = 0;
+  }
+  car.previousYawSlip = car.yawSlip;
+  car.yawSlip += Math.trunc((car.yawSlipRate << 4)/hz);
+  const slipLimit = 20 << 6;
+  if (car.yawSlip > slipLimit) {
+    heading += (car.yawSlip >> 2)-(20 << 4);
+    car.yawSlip = slipLimit;
+  } else if (car.yawSlip < -slipLimit) {
+    heading += (car.yawSlip >> 2)+(20 << 4);
+    car.yawSlip = -slipLimit;
+  }
+  const rotation = heading-oldAngle+(Math.trunc(velocity*car.steering/hz) >> 6);
   const newAngle = wrap(oldAngle+rotation);
-  const table = district.start.sine;
   const dx = (Math.trunc(sine(table,newAngle)*velocity/hz) >> 7)/8;
   const dy = (Math.trunc(sine(table,newAngle+quarter)*velocity/hz) >> 7)/8;
   if (!dx && !dy && !rotation) return 0;
-  const hit = sweepCab(car,district,dx,dy,oldAngle,newAngle,velocity < 0);
+  const hit = sweepCab(car,district,dx,dy,oldAngle,newAngle);
   if (!hit) {
     car.x += dx; car.y += dy; car.angle = newAngle;
     return 0;
   }
-  const advance = Math.max(0,hit.t-1/Math.max(1,Math.hypot(dx,dy)+120*Math.abs(rotation)*Math.PI/2880));
+  const bounds = district.taxiBounds ?? fallbackBounds;
+  const radius = Math.hypot(Math.max(-bounds.left,bounds.right),Math.max(-bounds.back,bounds.front));
+  const advance = Math.max(0,hit.t-0.1/Math.max(0.1,Math.hypot(dx,dy)+radius*Math.abs(rotation)*Math.PI/2880));
   car.x += dx*advance; car.y += dy*advance;
   car.angle = wrap(oldAngle+Math.trunc(rotation*advance));
   const dot = dx*hit.nx+dy*hit.ny;
   const headOn = dot*dot >= 0.5*(dx*dx+dy*dy);
   if (headOn) {
     car.speed = -(velocity >> 2)*256;
+    car.skidMode = false;
   } else {
     const tx = (dx-dot*hit.nx)*(1-advance), ty = (dy-dot*hit.ny)*(1-advance);
     const slideAngle = wrap(car.angle+80*Math.sign(dot*(dx*hit.ny-dy*hit.nx)));
-    if (!sweepCab(car,district,tx,ty,car.angle,slideAngle,velocity < 0)) {
+    if (!sweepCab(car,district,tx,ty,car.angle,slideAngle)) {
       car.x += tx; car.y += ty; car.angle = slideAngle;
     }
   }
@@ -248,7 +415,8 @@ function moveCab(car, district, keys) {
 }
 
 export function cameraPose(car, district) {
-  const angle = car.angle*Math.PI/2880 + (car.camera ? car.orbitYaw : car.lookYaw);
+  const angle = car.camera ? (car.chaseYaw ?? car.angle*Math.PI/2880) :
+    car.angle*Math.PI/2880+car.lookYaw;
   const fx = Math.sin(angle), fy = Math.cos(angle);
   if (!car.camera) {
     const [right,forward,down] = district.taxiEye ?? [0,0,0];
@@ -258,9 +426,12 @@ export function cameraPose(car, district) {
       fx,fy,angle,pitch:car.lookPitch};
   }
   const distance = car.chaseDistance;
-  const lift = chaseLift(distance);
-  const targetZ = car.z+(district.taxiCenterZ ?? (cabBody.base-cabBody.height/2));
+  const centerZ = district.taxiCenterZ ?? (cabBody.base-cabBody.height/2);
+  const bottom = (district.taxiBounds ?? fallbackBounds).bottom;
+  const pitch = chasePitch(car,distance,centerZ,bottom);
+  const lift = distance*Math.tan(pitch);
+  const targetZ = car.z+centerZ;
   const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift);
   return {x:car.x-fx*distance*clear,y:car.y-fy*distance*clear,z:targetZ-lift*clear,
-    fx,fy,angle,pitch:car.chasePitch ?? Math.atan2(lift,distance)};
+    fx,fy,angle,pitch};
 }

@@ -10,11 +10,13 @@
 <body>
   <main>
     <canvas id="screen" width="320" height="200" tabindex="-1" aria-label="Quarantine game screen" hidden></canvas>
+    <canvas id="wayfinder" width="64" height="52" role="img" aria-label="Wayfinder" hidden></canvas>
     <div id="restoreChoice" aria-label="Restore this game?" hidden>
       <button type="button" value="y">Yes</button>
       <button type="button" value="n">No</button>
     </div>
     <p id="checkpoint" role="status" hidden></p>
+    <p id="mouseCaptureHint" role="status" hidden>Click the driving view to capture the mouse</p>
     <a id="uploadMode" href="?upload=1" hidden>Select game folder</a>
     <dialog id="settingsPanel" aria-labelledby="settingsTitle">
       <header class="settings-header">
@@ -31,6 +33,20 @@
         <label class="invert-row" for="invertY">Invert vertical mouselook
           <input type="checkbox" role="switch" id="invertY">
         </label>
+      </fieldset>
+      <fieldset class="settings-group"><legend>Image processing</legend>
+        <div class="volume-row"><label for="upscale">xBR-style texture upscale</label>
+          <output for="upscale"></output>
+          <input type="range" min="1" max="4" step="1" value="1" id="upscale">
+        </div>
+        <div class="volume-row"><label for="fxaa">FXAA</label>
+          <output for="fxaa"></output>
+          <input type="range" min="0" max="100" step="1" value="0" id="fxaa">
+        </div>
+        <div class="volume-row"><label for="sharpen">Texture contrast-adaptive sharpening</label>
+          <output for="sharpen"></output>
+          <input type="range" min="0" max="100" step="1" value="0" id="sharpen">
+        </div>
       </fieldset>
       <fieldset class="settings-group"><legend>Audio</legend>
         <div class="volume-row"><label for="effectsVolume">Sound FX volume</label>

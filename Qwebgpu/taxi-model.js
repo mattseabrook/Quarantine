@@ -76,7 +76,12 @@ function readGeometry(gltf, binary) {
   for (const draw of draws) draw.center = fit(draw.center.x,draw.center.y,draw.center.z);
   const centerZ = rideHeight-(high.y-low.y)*scale/2;
   const headlamps = lensCenters.map(p => fit(p.x,p.y,p.z));
-  return {vertices,indices,draws,eye:fit(...driverEye),centerZ,headlamps};
+  const bounds = {
+    left:(midX-high.x)*scale, right:(midX-low.x)*scale,
+    back:(low.z-midZ)*scale, front:(high.z-midZ)*scale,
+    top:rideHeight-(high.y-low.y)*scale, bottom:rideHeight,
+  };
+  return {vertices,indices,draws,eye:fit(...driverEye),centerZ,headlamps,bounds};
 }
 
 const mipShader = `
@@ -103,7 +108,7 @@ async function uploadTaxi(device,materialLayout) {
   }
   const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(file,20,jsonLength)));
   const binary = new Uint8Array(file,28+jsonLength);
-  const {vertices,indices,draws,eye,centerZ,headlamps} = readGeometry(gltf,binary);
+  const {vertices,indices,draws,eye,centerZ,headlamps,bounds} = readGeometry(gltf,binary);
   const allocated = [];
   function buffer(data,usage) {
     const b = device.createBuffer({size:data.byteLength,usage:usage|GPUBufferUsage.COPY_DST});
@@ -179,7 +184,7 @@ async function uploadTaxi(device,materialLayout) {
     const opaque = [], glass = [];
     for (const d of draws) (gltf.materials[d.material].alphaMode === 'BLEND' ? glass : opaque).push(d);
     opaque.sort((a,b) => a.material-b.material);
-    return {eye,centerZ,headlamps,draw(pass,pipeline,transparent,direction) {
+    return {eye,centerZ,headlamps,bounds,draw(pass,pipeline,transparent,direction) {
       const parts = transparent ? glass : opaque;
       if (transparent) {
         for (const d of parts) d.depth = d.center.reduce((sum,x,i) => sum+x*direction[i],0);

@@ -27,7 +27,7 @@ export function createConsole(screen, district, car, view) {
     const walls = tile ? (district.wallOffsets[tile.id+1]-district.wallOffsets[tile.id])/6 : 0;
     return `${district.start.map} / ${district.start.blocks}  map ${district.width}x${district.height}  ${here}\n` +
       `car ${pos(car.x)}, ${pos(car.y)}, ${pos(car.z)}  heading ${pos(car.angle)} / 5760  speed ${pos(car.speed/256)}  camera ${car.camera}\n` +
-      `eye ${pos(camera.x)}, ${pos(camera.y)}, ${pos(camera.z)}  pitch ${pos(camera.pitch*180/Math.PI)} deg  ${screen.width}x${screen.height}  ${fps.toFixed(1)} fps\n` +
+      `eye ${pos(camera.x)}, ${pos(camera.y)}, ${pos(camera.z)}  pitch ${pos(camera.pitch*180/Math.PI)} deg  render ${view.resolution().join('x')}  output ${screen.width}x${screen.height}  ${fps.toFixed(1)} fps\n` +
       `cell triangles ${range ? range.count/3 : 0}  collision segments ${walls}  district instances ${stats.instances}  batches ${stats.batches}  mesh vertices ${stats.vertices}\n` +
       'Commands: help, status, map, walls [dx dy], floors [dx dy], report, clear, copy';
   }
