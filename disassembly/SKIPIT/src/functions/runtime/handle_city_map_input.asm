@@ -1,10 +1,10 @@
-; Analyzer entry: 00051538
-; Analyzer symbol: FUN_00051538
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00051538
+; Semantic name: handle_city_map_input
+; Evidence: Consumes one directional key in up/down/left/right priority in manual mode. In state two it also decodes the accept and decline keys.
 
-%macro emit_function_00051538_part_00 0
+%macro emit_handle_city_map_input_part_00 0
     %%fragment_start:
-function_00051538:
+handle_city_map_input:
     %%insn_00051538_51538:
     push ebx ; 00051538 53
     %if ($ - %%insn_00051538_51538) > 1

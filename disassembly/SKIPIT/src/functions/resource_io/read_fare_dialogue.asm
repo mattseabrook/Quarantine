@@ -1,10 +1,10 @@
-; Analyzer entry: 0004ff10
-; Analyzer symbol: FUN_0004ff10
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004FF10
+; Semantic name: read_fare_dialogue
+; Evidence: The signed record selector chooses fare.enc or the district file. Slash separates records and quotes delimit up to six strings, all encoded with XOR 55h.
 
-%macro emit_function_0004ff10_part_00 0
+%macro emit_read_fare_dialogue_part_00 0
     %%fragment_start:
-function_0004ff10:
+read_fare_dialogue:
     %%insn_0004ff10_4FF10:
     push ecx ; 0004FF10 51
     %if ($ - %%insn_0004ff10_4FF10) > 1

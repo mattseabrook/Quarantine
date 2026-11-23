@@ -204,11 +204,12 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
   function dismiss() { session.welcome = false; describe(); updateMouseCaptureUI(); }
   async function openMap() {
     mapLoading = true;
+    effects.stopEngine();
     release();
     try {
       session.map ??= await loadMap(bytes,district.start.district,district.start.mapDisplay);
       if (leaving || events.signal.aborted) return;
-      mapView = createMapView(display,session.map,car,district.start.mapDisplay);
+      mapView = createMapView(display,session.map,car,district.start.mapDisplay,click);
       screen.width = 320; screen.height = 200;
       screen.classList.remove('driving','hide-cursor');
       screen.setAttribute('aria-label','City map. Click a bay or use arrow keys to select a waypoint. M or Escape returns to driving.');
@@ -248,7 +249,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
         return;
       }
       if (e.ctrlKey || e.metaKey || (e.altKey && !['KeyW','KeyS','KeyA','KeyD',
-        'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) || e.key === 'Tab') return;
+        'ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Numpad8','Numpad2','Numpad4','Numpad6'].includes(e.code)) || e.key === 'Tab') return;
       if (e.code === 'Backquote') {
         e.preventDefault();
         if (e.repeat) return;
@@ -270,10 +271,10 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           closeMap();
           captureMouse();
         }
-        else if (e.code === 'ArrowLeft') mapView.move(-2,0);
-        else if (e.code === 'ArrowRight') mapView.move(2,0);
-        else if (e.code === 'ArrowUp') mapView.move(0,-2);
-        else if (e.code === 'ArrowDown') mapView.move(0,2);
+        else if (e.code === 'ArrowLeft' || e.code === 'Numpad4') mapView.move(-2,0);
+        else if (e.code === 'ArrowRight' || e.code === 'Numpad6') mapView.move(2,0);
+        else if (e.code === 'ArrowUp' || e.code === 'Numpad8') mapView.move(0,-2);
+        else if (e.code === 'ArrowDown' || e.code === 'Numpad2') mapView.move(0,2);
         return;
       }
       if (mapLoading) return;
@@ -416,12 +417,13 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
               if (driveTick(car,district,held)) effects.contact();
-              tickWayfinder(car,district.start.mapDisplay);
+              if (car.mineSound !== null) effects.explode(car.mineSound);
+              if (tickWayfinder(car,district.start.mapDisplay)) effects.arrive();
               view.tickMaterials();
               accumulator -= dt;
             }
           }
-          if (driving) effects.update(car.speed);
+          if (driving) effects.update(car.velocity ?? (car.speed >> 8));
           const alpha = accumulator/dt;
           visibleCar.x = lastTick.x + (car.x-lastTick.x)*alpha;
           visibleCar.y = lastTick.y + (car.y-lastTick.y)*alpha;
@@ -436,7 +438,8 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
           visibleCar.steering = lastTick.steering + (car.steering-lastTick.steering)*alpha;
           visibleCar.camera = car.camera;
           visibleCar.headlights = car.headlights;
-          visibleCar.braking = driving && !session.welcome && (held.has('KeyS') || held.has('ArrowDown'));
+          visibleCar.braking = driving && !session.welcome && (held.has('KeyS') || held.has('ArrowDown') || held.has('Numpad2')) &&
+            !(held.has('KeyW') || held.has('ArrowUp') || held.has('Numpad8'));
           visibleCar.lookYaw = car.lookYaw;
           visibleCar.lookPitch = car.lookPitch;
           visibleCar.chaseYaw = car.chaseYaw;

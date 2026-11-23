@@ -1,10 +1,10 @@
-; Analyzer entry: 0004d9ac
-; Analyzer symbol: FUN_0004d9ac
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004D9AC
+; Semantic name: place_district_wall_gun
+; Evidence: Assigns local offsets and headings for four directional mounts or a central tracking mount.
 
-%macro emit_function_0004d9ac_part_00 0
+%macro emit_place_district_wall_gun_part_00 0
     %%fragment_start:
-function_0004d9ac:
+place_district_wall_gun:
     %%insn_0004d9ac_4D9AC:
     push ebx ; 0004D9AC 53
     %if ($ - %%insn_0004d9ac_4D9AC) > 1

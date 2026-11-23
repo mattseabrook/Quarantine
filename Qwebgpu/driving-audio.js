@@ -12,8 +12,10 @@ export async function loadDrivingSounds(context,getFile) {
       return null;
     }
   }
-  const [engine,impact,horn] = await Promise.all([load('ENG7.VOC'),load('IMPACT.VOC'),load('HORN.VOC')]);
-  return {engine,impact,horn,unavailable:[!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC',!horn && 'HORN.VOC'].filter(Boolean)};
+  const [engine,impact,horn,arrival,blast1,blast2] = await Promise.all([
+    load('ENG7.VOC'),load('IMPACT.VOC'),load('HORN.VOC'),load('TING.VOC'),load('EXPLO1.VOC'),load('EXPLO2.VOC'),
+  ]);
+  return {engine,impact,horn,arrival,blasts:[blast1,blast2],unavailable:[!blast1 && 'EXPLO1.VOC',!blast2 && 'EXPLO2.VOC',!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC',!horn && 'HORN.VOC',!arrival && 'TING.VOC'].filter(Boolean)};
 }
 
 export function createDrivingAudio(context,sounds) {
@@ -53,8 +55,16 @@ export function createDrivingAudio(context,sounds) {
     if (!enabled) stopOneShots();
   }
 
-  function update(speed) {
-    const magnitude = Math.min(350,Math.abs(speed >> 8));
+  function stopEngine() {
+    motor?.stop();
+    motor?.disconnect();
+    motorGain?.disconnect();
+    motor = motorGain = null;
+    lastSpeed = -1;
+  }
+
+  function update(velocity) {
+    const magnitude = Math.min(350,Math.abs(velocity));
     if (!active || !motor || magnitude === lastSpeed) return;
     lastSpeed = magnitude;
     // SKIPIT 0x4ACA6 writes the 16.16 step directly to the active sample.
@@ -74,14 +84,12 @@ export function createDrivingAudio(context,sounds) {
     source.start();
   }
 
-  return {setActive,update,contact:() => playEffect(sounds.impact),horn:() => playEffect(sounds.horn),close() {
+  return {setActive,stopEngine,update,explode:i => playEffect(sounds.blasts[i]),arrive:() => playEffect(sounds.arrival),contact:() => playEffect(sounds.impact),horn:() => playEffect(sounds.horn),close() {
     if (closed) return;
     closed = true;
     active = false;
     stopOneShots();
-    motor?.stop();
-    motor?.disconnect();
-    motorGain?.disconnect();
+    stopEngine();
     output.disconnect();
   }};
 }

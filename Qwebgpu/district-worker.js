@@ -234,9 +234,11 @@ async function prepare(part, files, start) {
       if (!/^\d+$/.test(row)) throw new Error('Invalid sprite class row in '+objName);
       objectClasses.push(Uint8Array.from(row,Number));
     }
+    const enemy = await bytes('ENEMY.ENC');
+    const mineDamage = new DataView(enemy.buffer,enemy.byteOffset,enemy.byteLength).getInt16(2*(198+10*start.district),true);
     const grid = readMap(map,start.map);
     const collision = tablePage(coll,start.district,'COLLDAT.DAT'), triggers = tablePage(trig,start.district,'TRIGDAT.DAT');
-    return {value:{...grid,collision,triggers,objectClasses}, transfer:[grid.tiles.buffer,collision.buffer,triggers.buffer]};
+    return {value:{...grid,mineDamage,collision,triggers,objectClasses}, transfer:[grid.tiles.buffer,collision.buffer,triggers.buffer]};
   }
   const textureName = 'TEXTURE'+start.district+'.DAT';
   const [records,floor,sky,banks,flags,shadeConfig,map,animations] = await Promise.all([
@@ -260,9 +262,14 @@ async function prepare(part, files, start) {
   // MAP-indexed directory to the renderer, lights, diagnostics and physics.
   const empty = {faces:[],wallRuns:[],placements:[],materials:new Uint8Array(),variantStride:0};
   const blocks = start.blockRecords.map(record => records[record] ?? empty);
-  const mesh = districtMesh({blocks,floor,sky,banks,flags,animations,districtId:start.district,
+  const [city,blast,gun,tracer] = await Promise.all(['CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR'].map(async name => {
+    const raw = await bytes(name);
+    return readSpriteBank(raw,raw[0],{planar:false});
+  }));
+  const grid = readMap(map,start.map);
+  const mesh = districtMesh({grid,blastOffsets:start.actorScan.blastOffsets,hazardFrames:[city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
     bankNames:start.wallBanks,panorama:start.panorama,flatSkyIndex});
-  const wallDepth = wallDepthLayers(blocks,readMap(map,start.map),flags);
+  const wallDepth = wallDepthLayers(blocks,grid,flags);
   // The CPU driver only needs vertical segments. Send flat collision arrays,
   // leaving the full face and texture objects in this short-lived worker.
   const wallOffsets = new Uint32Array(blocks.length*4+1), segments = [], solidFlags = [];

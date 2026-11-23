@@ -1,10 +1,10 @@
-; Analyzer entry: 0004c65c
-; Analyzer symbol: FUN_0004c65c
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004C65C
+; Semantic name: detonate_map_mine_on_contact
+; Evidence: Switches the actor to state three, quadruples its scale, installs the explosion callback, applies district damage and starts a power-30 impulse.
 
-%macro emit_function_0004c65c_part_00 0
+%macro emit_detonate_map_mine_on_contact_part_00 0
     %%fragment_start:
-function_0004c65c:
+detonate_map_mine_on_contact:
     %%insn_0004c65c_4C65C:
     push ebx ; 0004C65C 53
     %if ($ - %%insn_0004c65c_4C65C) > 1

@@ -1,10 +1,10 @@
-; Analyzer entry: 00025590
-; Analyzer symbol: FUN_00025590
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00025590
+; Semantic name: select_actor_scan_cell
+; Evidence: Indexes the heading and scan-column tables, samples the MAP and aligns the result to the cell origin.
 
-%macro emit_function_00025590_part_00 0
+%macro emit_select_actor_scan_cell_part_00 0
     %%fragment_start:
-function_00025590:
+select_actor_scan_cell:
     %%insn_00025590_25590:
     push ebx ; 00025590 53
     %if ($ - %%insn_00025590_25590) > 1

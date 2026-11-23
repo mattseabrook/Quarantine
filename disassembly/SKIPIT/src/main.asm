@@ -180,7 +180,7 @@ bits 32
 %include "src/functions/unresolved/0001f548_fun_0001f548.asm"
 %include "src/functions/unresolved/0001f670_fun_0001f670.asm"
 %include "src/functions/unresolved/0001f918_fun_0001f918.asm"
-%include "src/functions/unresolved/0001fa7c_fun_0001fa7c.asm"
+%include "src/functions/runtime/update_waiting_fare_pickup.asm"
 %include "src/functions/unresolved/0001fbc8_fun_0001fbc8.asm"
 %include "src/functions/unresolved/0001fdb8_fun_0001fdb8.asm"
 %include "src/functions/unresolved/0001ffa4_fun_0001ffa4.asm"
@@ -232,12 +232,12 @@ bits 32
 %include "src/functions/unresolved/00024c34_fun_00024c34.asm"
 %include "src/functions/graphics/play_kpg_planar_delta_animation.asm"
 %include "src/functions/unresolved/00025240_fun_00025240.asm"
-%include "src/functions/unresolved/00025350_fun_00025350.asm"
-%include "src/functions/unresolved/000253e8_fun_000253e8.asm"
+%include "src/functions/runtime/scan_district_block_actor.asm"
+%include "src/functions/runtime/allocate_map_marker_actor.asm"
 %include "src/functions/unresolved/000254e0_fun_000254e0.asm"
-%include "src/functions/unresolved/00025590_fun_00025590.asm"
-%include "src/functions/unresolved/0002569c_fun_0002569c.asm"
-%include "src/functions/unresolved/00025700_fun_00025700.asm"
+%include "src/functions/runtime/select_actor_scan_cell.asm"
+%include "src/functions/runtime/actor_outside_activation_range.asm"
+%include "src/functions/runtime/place_actor_in_road_lane.asm"
 %include "src/functions/unresolved/000257cc_fun_000257cc.asm"
 %include "src/functions/unresolved/00025828_fun_00025828.asm"
 %include "src/functions/unresolved/000259ac_fun_000259ac.asm"
@@ -249,7 +249,7 @@ bits 32
 %include "src/functions/runtime/resolve_player_wall_contact.asm"
 %include "src/functions/unresolved/00026514_fun_00026514.asm"
 %include "src/functions/unresolved/000266e0_fun_000266e0.asm"
-%include "src/functions/unresolved/00026744_fun_00026744.asm"
+%include "src/functions/runtime/read_current_district_cell.asm"
 %include "src/functions/unresolved/000267ac_fun_000267ac.asm"
 %include "src/functions/unresolved/00026854_fun_00026854.asm"
 %include "src/functions/unresolved/000268d0_fun_000268d0.asm"
@@ -257,7 +257,7 @@ bits 32
 %include "src/functions/unresolved/000269c8_fun_000269c8.asm"
 %include "src/functions/unresolved/00026adc_fun_00026adc.asm"
 %include "src/functions/unresolved/00026b58_fun_00026b58.asm"
-%include "src/functions/unresolved/00026c48_fun_00026c48.asm"
+%include "src/functions/runtime/dispatch_player_actor_contact.asm"
 %include "src/functions/unresolved/00026d40_fun_00026d40.asm"
 %include "src/functions/unresolved/00026f78_fun_00026f78.asm"
 %include "src/functions/unresolved/00027258_fun_00027258.asm"
@@ -535,7 +535,7 @@ bits 32
 %include "src/functions/graphics/draw_district_render_queue.asm"
 %include "src/functions/unresolved/000412e0_fun_000412e0.asm"
 %include "src/functions/unresolved/0004138c_fun_0004138c.asm"
-%include "src/functions/unresolved/00041460_fun_00041460.asm"
+%include "src/functions/runtime/next_actor_random_byte.asm"
 %include "src/functions/runtime/find_floor_below_point.asm"
 %include "src/functions/unresolved/00041594_fun_00041594.asm"
 %include "src/functions/runtime/find_player_ceiling.asm"
@@ -549,7 +549,7 @@ bits 32
 %include "src/functions/unresolved/00043cac_fun_00043cac.asm"
 %include "src/functions/unresolved/00043d0c_fun_00043d0c.asm"
 %include "src/functions/unresolved/00043d70_fun_00043d70.asm"
-%include "src/functions/unresolved/00043e58_fun_00043e58.asm"
+%include "src/functions/runtime/player_overlaps_actor.asm"
 %include "src/functions/unresolved/00043ff0_fun_00043ff0.asm"
 %include "src/functions/unresolved/00044050_fun_00044050.asm"
 %include "src/functions/unresolved/00044184_fun_00044184.asm"
@@ -566,7 +566,7 @@ bits 32
 %include "src/functions/unresolved/000455fc_fun_000455fc.asm"
 %include "src/functions/unresolved/00045748_fun_00045748.asm"
 %include "src/functions/unresolved/00045a84_fun_00045a84.asm"
-%include "src/functions/unresolved/00045aa4_fun_00045aa4.asm"
+%include "src/functions/runtime/select_district_fare_record.asm"
 %include "src/functions/unresolved/00045b18_fun_00045b18.asm"
 %include "src/functions/unresolved/00045b58_fun_00045b58.asm"
 %include "src/functions/unresolved/00045b9c_fun_00045b9c.asm"
@@ -671,8 +671,8 @@ bits 32
 %include "src/functions/audio/send_mscdex_device_request.asm"
 %include "src/functions/audio/get_cd_track_start_frames.asm"
 %include "src/functions/unresolved/0004c5f4_fun_0004c5f4.asm"
-%include "src/functions/unresolved/0004c65c_fun_0004c65c.asm"
-%include "src/functions/unresolved/0004c784_fun_0004c784.asm"
+%include "src/functions/runtime/detonate_map_mine_on_contact.asm"
+%include "src/functions/runtime/initialize_map_mine.asm"
 %include "src/functions/unresolved/0004c800_fun_0004c800.asm"
 %include "src/functions/unresolved/0004ca38_fun_0004ca38.asm"
 %include "src/functions/unresolved/0004cb7c_fun_0004cb7c.asm"
@@ -680,8 +680,8 @@ bits 32
 %include "src/functions/unresolved/0004cf18_fun_0004cf18.asm"
 %include "src/functions/unresolved/0004d184_fun_0004d184.asm"
 %include "src/functions/unresolved/0004d778_fun_0004d778.asm"
-%include "src/functions/unresolved/0004d8b0_fun_0004d8b0.asm"
-%include "src/functions/unresolved/0004d9ac_fun_0004d9ac.asm"
+%include "src/functions/runtime/initialize_district_wall_gun.asm"
+%include "src/functions/runtime/place_district_wall_gun.asm"
 %include "src/functions/unresolved/0004dcc4_fun_0004dcc4.asm"
 %include "src/functions/unresolved/0004dfe4_fun_0004dfe4.asm"
 %include "src/functions/unresolved/0004e618_fun_0004e618.asm"
@@ -704,11 +704,11 @@ bits 32
 %include "src/functions/unresolved/0004fbfc_fun_0004fbfc.asm"
 %include "src/functions/graphics/pan_city_map_to_target.asm"
 %include "src/functions/unresolved/0004fdd8_fun_0004fdd8.asm"
-%include "src/functions/unresolved/0004ff10_fun_0004ff10.asm"
+%include "src/functions/resource_io/read_fare_dialogue.asm"
 %include "src/functions/unresolved/00050040_fun_00050040.asm"
 %include "src/functions/unresolved/00050150_fun_00050150.asm"
 %include "src/functions/graphics/show_city_map.asm"
-%include "src/functions/unresolved/00051538_fun_00051538.asm"
+%include "src/functions/runtime/handle_city_map_input.asm"
 %include "src/functions/runtime/get_wayfinder_cell_delta.asm"
 %include "src/functions/runtime/select_directional_map_waypoint.asm"
 %include "src/functions/graphics/load_and_draw_map_bays.asm"
@@ -3850,7 +3850,7 @@ emit_data_0180_0003a07a
 %if ($ - $$) != 0xFA7C
     %error "layout drift at raw 0003A07C"
 %endif
-emit_function_0001fa7c_part_00
+emit_update_waiting_fare_pickup_part_00
 
 ; raw 0003A1C6..0003A1C8 (explicit data)
 %if ($ - $$) != 0xFBC6
@@ -4390,13 +4390,13 @@ emit_data_0218_0003f94d
 %if ($ - $$) != 0x15350
     %error "layout drift at raw 0003F950"
 %endif
-emit_function_00025350_part_00
+emit_scan_district_block_actor_part_00
 
 ; raw 0003F9E8..0003FADE (analyzer-owned function)
 %if ($ - $$) != 0x153E8
     %error "layout drift at raw 0003F9E8"
 %endif
-emit_function_000253e8_part_00
+emit_allocate_map_marker_actor_part_00
 
 ; raw 0003FADE..0003FAE0 (explicit data)
 %if ($ - $$) != 0x154DE
@@ -4420,7 +4420,7 @@ emit_data_0220_0003fb47
 %if ($ - $$) != 0x15590
     %error "layout drift at raw 0003FB90"
 %endif
-emit_function_00025590_part_00
+emit_select_actor_scan_cell_part_00
 
 ; raw 0003FC9A..0003FC9C (explicit data)
 %if ($ - $$) != 0x1569A
@@ -4432,13 +4432,13 @@ emit_data_0221_0003fc9a
 %if ($ - $$) != 0x1569C
     %error "layout drift at raw 0003FC9C"
 %endif
-emit_function_0002569c_part_00
+emit_actor_outside_activation_range_part_00
 
 ; raw 0003FD00..0003FDCA (analyzer-owned function)
 %if ($ - $$) != 0x15700
     %error "layout drift at raw 0003FD00"
 %endif
-emit_function_00025700_part_00
+emit_place_actor_in_road_lane_part_00
 
 ; raw 0003FDCA..0003FDCC (explicit data)
 %if ($ - $$) != 0x157CA
@@ -4570,7 +4570,7 @@ emit_data_0231_00040d43
 %if ($ - $$) != 0x16744
     %error "layout drift at raw 00040D44"
 %endif
-emit_function_00026744_part_00
+emit_read_current_district_cell_part_00
 
 ; raw 00040DAA..00040DAC (explicit data)
 %if ($ - $$) != 0x167AA
@@ -4666,7 +4666,7 @@ emit_data_0239_0004121b
 %if ($ - $$) != 0x16C48
     %error "layout drift at raw 00041248"
 %endif
-emit_function_00026c48_part_00
+emit_dispatch_player_actor_contact_part_00
 
 ; raw 00041332..00041340 (explicit data)
 %if ($ - $$) != 0x16D32
@@ -7666,7 +7666,7 @@ emit_data_0462_0005ba4f
 %if ($ - $$) != 0x31460
     %error "layout drift at raw 0005BA60"
 %endif
-emit_function_00041460_part_00
+emit_next_actor_random_byte_part_00
 
 ; raw 0005BA84..0005BB92 (analyzer-owned function)
 %if ($ - $$) != 0x31484
@@ -7816,7 +7816,7 @@ emit_function_00043d70_part_00
 %if ($ - $$) != 0x33E58
     %error "layout drift at raw 0005E458"
 %endif
-emit_function_00043e58_part_00
+emit_player_overlaps_actor_part_00
 
 ; raw 0005E52E..0005E5F0 (explicit data)
 %if ($ - $$) != 0x33F2E
@@ -8002,7 +8002,7 @@ emit_data_0487_000600a2
 %if ($ - $$) != 0x35AA4
     %error "layout drift at raw 000600A4"
 %endif
-emit_function_00045aa4_part_00
+emit_select_district_fare_record_part_00
 
 ; raw 00060117..00060118 (explicit data)
 %if ($ - $$) != 0x35B17
@@ -9004,7 +9004,7 @@ emit_data_0549_00066c3c
 %if ($ - $$) != 0x3C65C
     %error "layout drift at raw 00066C5C"
 %endif
-emit_function_0004c65c_part_00
+emit_detonate_map_mine_on_contact_part_00
 
 ; raw 00066CC7..00066D84 (explicit data)
 %if ($ - $$) != 0x3C6C7
@@ -9016,7 +9016,7 @@ emit_data_0550_00066cc7
 %if ($ - $$) != 0x3C784
     %error "layout drift at raw 00066D84"
 %endif
-emit_function_0004c784_part_00
+emit_initialize_map_mine_part_00
 
 ; raw 00066DFE..00066E00 (explicit data)
 %if ($ - $$) != 0x3C7FE
@@ -9112,7 +9112,7 @@ emit_data_0558_00067ead
 %if ($ - $$) != 0x3D8B0
     %error "layout drift at raw 00067EB0"
 %endif
-emit_function_0004d8b0_part_00
+emit_initialize_district_wall_gun_part_00
 
 ; raw 00067F98..00067FAC (explicit data)
 %if ($ - $$) != 0x3D998
@@ -9124,7 +9124,7 @@ emit_data_0559_00067f98
 %if ($ - $$) != 0x3D9AC
     %error "layout drift at raw 00067FAC"
 %endif
-emit_function_0004d9ac_part_00
+emit_place_district_wall_gun_part_00
 
 ; raw 00068125..000682C4 (explicit data)
 %if ($ - $$) != 0x3DB25
@@ -9400,7 +9400,7 @@ emit_data_0582_0006a50d
 %if ($ - $$) != 0x3FF10
     %error "layout drift at raw 0006A510"
 %endif
-emit_function_0004ff10_part_00
+emit_read_fare_dialogue_part_00
 
 ; raw 0006A63F..0006A640 (explicit data)
 %if ($ - $$) != 0x4003F
@@ -9442,7 +9442,7 @@ emit_data_0585_0006bb36
 %if ($ - $$) != 0x41538
     %error "layout drift at raw 0006BB38"
 %endif
-emit_function_00051538_part_00
+emit_handle_city_map_input_part_00
 
 ; raw 0006BCB6..0006BD10 (explicit data)
 %if ($ - $$) != 0x416B6

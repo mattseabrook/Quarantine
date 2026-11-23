@@ -166,7 +166,7 @@ fn taxiTexel(p:vec2i,fallback:vec3f) -> vec3f {
   }
   if (finish.lamp.y > 0.0 && dot(p.world.xy-view.player.xy,view.outputSize.zw) < -20.0) {
     let rear = smoothstep(0.0,0.45,-dot(eye.xy,view.outputSize.zw));
-    let red = mix(vec3f(0.35,0.008,0.004),vec3f(1.0,0.015,0.008),view.taillamps[0].w);
+    let red = mix(vec3f(0.68,0.012,0.006),vec3f(1.0,0.12,0.04),view.taillamps[0].w);
     return vec4f(mix(rgb,red*view.settings.x,rear),mix(alpha,1.0,rear));
   }
   return vec4f(rgb,alpha);

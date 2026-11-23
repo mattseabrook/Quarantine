@@ -17,7 +17,7 @@ struct View {
   eye: vec4f, axes: vec4f, scale: vec4f, outputSize: vec4f,
   sky: vec4f, player: vec4f, settings: vec4f,
   ambient: vec4f, backdrop: vec4f, hd: vec4u, skyTint: vec4f,
-  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,2>
+  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,6>
 };
 fn skyRay(uv: vec2f) -> vec3f {
   let offset = (2.0*uv-1.0)/view.scale.xy;
@@ -113,8 +113,8 @@ struct Surface {
   out.worldPos = vec3f(xy,z+view.eye.z);
   out.normalAndLamp = vec4f(0.0);
   if (placed) { out.normalAndLamp.w = wall.y; }
-  if (wall.z == -2.0) { out.normalAndLamp.z = -1.0; }
-  if (wall.z == -3.0) { out.normalAndLamp.z = 1.0; }
+  if (wall.z == -2.0 || wall.z == -5.0) { out.normalAndLamp.z = -1.0; }
+  if (wall.z == -3.0) { out.normalAndLamp.z = select(1.0,-1.0,z > 0.0); }
   out.shadeDivisor = 110.0;
   if (wall.z >= 0.0) {
     let flagsAndFace = u32(wall.z);
@@ -194,7 +194,7 @@ fn tailLightAt(point:vec3f, normal:vec3f, billboard:bool) -> f32 {
   let forward = view.outputSize.zw;
   let right = vec2f(-forward.y,forward.x);
   var light = 0.0;
-  for (var i=0u; i<2u; i++) {
+  for (var i=0u; i<6u; i++) {
     let lamp = view.taillamps[i];
     let ray = point-lamp.xyz;
     let behind = -dot(ray.xy,forward);
@@ -204,7 +204,7 @@ fn tailLightAt(point:vec3f, normal:vec3f, billboard:bool) -> f32 {
     let beam = 1.0-smoothstep(0.25,1.0,length(offset/spread));
     let incidence = select(max(0.0,dot(normal,-ray)*inverseSqrt(max(1.0,dot(ray,ray)))),1.0,billboard);
     let falloff = 1.0-behind/120.0;
-    light += mix(0.12,1.3,lamp.w)*beam*falloff*falloff*sqrt(incidence);
+    light += mix(0.16,1.10,lamp.w)*beam*falloff*falloff*sqrt(incidence);
   }
   return light;
 }
@@ -218,7 +218,8 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
 }
 @fragment fn material(in: Surface) -> @location(0) vec4f {
   if (in.flags == -2.0 && in.height <= view.eye.z) { discard; }
-  if (in.flags == -3.0 && in.height >= view.eye.z) { discard; }
+  if (in.flags == -5.0 && (view.player.w == 0.0 || in.height <= view.eye.z)) { discard; }
+  if (in.flags == -3.0 && view.player.w == 0.0 && in.height >= view.eye.z) { discard; }
   var uv = in.uv;
   if (in.flags >= 0.0 && in.facing > 0.0) { uv.x = -uv.x; }
   let at = vec2i(in.rect.xy + floor(fract(uv)*in.rect.zw));
@@ -281,7 +282,11 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
       let local = vec2f(dot(delta.xy,vec2f(-forward.y,forward.x))/30.0,dot(delta.xy,forward)/55.0);
       let pool = 1.0-smoothstep(0.1,1.0,length(local));
       let height = 1.0-smoothstep(20.0,120.0,delta.z);
-      lit += max(ink,vec3f(0.06))*vec3f(0.20,0.65,1.0)*(1.3*pool*height);
+      lit += max(ink,vec3f(0.13))*vec3f(0.14,0.55,1.0)*(2.56*pool*height);
+      let core = local*vec2f(30.0/21.0,55.0/44.0);
+      if (view.player.w != 0.0) {
+        lit += vec3f(0.13,0.55,1.0)*(1.12*height*smoothstep(0.0,0.55,1.0-dot(core,core)));
+      }
     }
   }
   if (in.flags >= 16.0) {
@@ -480,13 +485,8 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
   let lamp = view.taillamps[lampIndex];
   let toEye = view.eye.xyz-lamp.xyz;
   let facing = -dot(toEye.xy,view.outputSize.zw)*inverseSqrt(max(1.0,dot(toEye,toEye)));
-  return projectHalo(i,vec4f(lamp.xyz,mix(3.0,6.0,lamp.w)),257u,
-    smoothstep(0.0,0.65,facing)*mix(0.35,2.4,lamp.w));
-}
-@vertex fn underglowHalo(@builtin(vertex_index) i:u32, @builtin(instance_index) lampIndex:u32) -> Halo {
-  let along = (f32(lampIndex)-1.0)*18.0;
-  let position = view.player.xyz+vec3f(view.outputSize.zw*along,14.0);
-  return projectHalo(i,vec4f(position,10.0),258u,0.8);
+  return projectHalo(i,vec4f(lamp.xyz,mix(2.8,5.1,lamp.w)),257u,
+    smoothstep(0.0,0.65,facing)*mix(1.2,2.8,lamp.w));
 }
 @fragment fn haloPixel(in: Halo) -> @location(0) vec4f {
   let r2 = dot(in.disc,in.disc);
@@ -495,7 +495,6 @@ fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
   let glow = edge*edge*(0.26*exp(-3.0*r2)+0.75*exp(-40.0*r2));
   if (in.paletteIndex == 256u) { return vec4f(vec3f(view.settings.x*glow*in.visibility),0.0); }
   if (in.paletteIndex == 257u) { return vec4f(vec3f(1.0,0.012,0.006)*view.settings.x*glow*in.visibility,0.0); }
-  if (in.paletteIndex == 258u) { return vec4f(vec3f(0.25,0.70,1.0)*view.settings.x*glow*in.visibility,0.0); }
   return vec4f(color(in.paletteIndex).rgb*glow*in.visibility,0.0);
 }`;
 
@@ -530,7 +529,7 @@ async function buildPipelines({device,format}) {
     {binding:16,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}]});
   const layout = device.createPipelineLayout({bindGroupLayouts:[bindLayout]});
   function pipeline(vertex,fragment,buffers=[]) {
-    const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo' || vertex === 'underglowHalo';
+    const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo';
     const blend = halo ? {color:{srcFactor:'one',dstFactor:'one'},
       alpha:{srcFactor:'zero',dstFactor:'one'}} : fragment === 'cabin' ? {
       color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},
@@ -541,7 +540,7 @@ async function buildPipelines({device,format}) {
       depthStencil:{format:depthFormat,depthWriteEnabled:vertex==='world' || fragment==='body',
         depthCompare:halo ? 'greater-equal' : (vertex==='world' || fragment==='body') ? 'greater' : 'always'}});
   }
-  const [skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline,underglowPipeline] = await Promise.all([
+  const [skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline] = await Promise.all([
     pipeline('screen','background'), pipeline('cabVertex','cabin'), pipeline('cabVertex','body'), pipeline('world','material',[
     {arrayStride:48,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x2'},
@@ -552,9 +551,8 @@ async function buildPipelines({device,format}) {
       {shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32'},
       {shaderLocation:2,offset:20,format:'float32x2'}]}]),
     prepareCloudPipeline(device,cameraShader),prepareTaxiPipelines(device,format,depthFormat,module,bindLayout),
-    pipeline('screen','taxiWelcome'),pipeline('headlampHalo','haloPixel'),pipeline('taillampHalo','haloPixel'),
-    pipeline('underglowHalo','haloPixel')]);
-  return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline,underglowPipeline};
+    pipeline('screen','taxiWelcome'),pipeline('headlampHalo','haloPixel'),pipeline('taillampHalo','haloPixel')]);
+  return {bindLayout,skyPipeline,cabinPipeline,bodyPipeline,worldPipeline,haloPipeline,cloudPipeline,taxi,welcomePipeline,headlampPipeline,taillampPipeline};
 }
 
 // Group MAP cells by their shared block geometry; each group is drawn as instances.
@@ -652,7 +650,9 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const vertices = buffer(mesh.vertices.byteLength,GPUBufferUsage.VERTEX,mesh.vertices);
   const surfaceNodes = buffer(mesh.surfaceNodes.byteLength,GPUBufferUsage.VERTEX,mesh.surfaceNodes);
   const {groups,halos} = districtDraws(district);
-  const instanceData = new Float32Array(district.tiles.length*2), haloData = new Float32Array(halos.length);
+  const hazardGroups = mesh.hazardRanges.map(range => ({...range,cells:[]}));
+  groups.push(...mesh.roofGroups,...hazardGroups);
+  const instanceData = new Float32Array((district.tiles.length+40)*2), haloData = new Float32Array(halos.length);
   const instances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionSize = 128;
@@ -666,10 +666,10 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const reflectionInstances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const reflectionHalos = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionData = new Float32Array(instanceData.length), reflectionHaloData = new Float32Array(haloData.length);
-  const uniforms = new Float32Array(64), reflectionUniforms = new Float32Array(64);
+  const uniforms = new Float32Array(80), reflectionUniforms = new Float32Array(80);
   const headlamps = session.taxi?.headlamps ?? [[-0.36*cabBody.width,cabBody.length/2,8],[0.36*cabBody.width,cabBody.length/2,8]];
-  const taillamps = session.taxi?.taillamps?.length === 2 ? session.taxi.taillamps :
-    [[-0.36*cabBody.width,-cabBody.length/2,8],[0.36*cabBody.width,-cabBody.length/2,8]];
+  const taillamps = session.taxi?.taillamps?.length === 6 ? session.taxi.taillamps :
+    [-0.36,0.36].flatMap(side => [6,8,10].map(down => [side*cabBody.width,-cabBody.length/2,down]));
   const key = hdTextures[0] ? skylineKey(district.hdSky) : null;
   new Uint32Array(uniforms.buffer).set([...hdTextures.map(image => Number(!!image)),Number(!!key)],36);
   const {offsets:lightOffsets,lights} = district.streetLights;
@@ -765,6 +765,10 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     const sx = 1/Math.tan(settings.fov*Math.PI/360), sy = sx*aspectNow;
     const cosPitch = Math.cos(camera.pitch), sinPitch = Math.sin(camera.pitch);
     uniforms[32] = 0.5;
+    for (const group of hazardGroups) group.cells.length = 0;
+    for (const mine of car.hazards.mines.values()) hazardGroups[mine.frame+1].cells.push(mine);
+    for (const gun of car.hazards.guns.values()) hazardGroups[13].cells.push(gun);
+    for (const shot of car.hazards.shots) hazardGroups[(shot.flip ? 18 : 14)+shot.image].cells.push(shot);
     const {visible,instanceCount,haloCount} = visibleDistrict(groups,camera,sx,sy,instanceData,halos,haloData);
     streetStats = {batches:visible.length,instances:instanceCount,vertices:mesh.vertices.length/12};
     if (instanceCount) device.queue.writeBuffer(instances,0,instanceData.subarray(0,instanceCount*2));
@@ -878,7 +882,6 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     }
     if (car.camera) {
       pass.setPipeline(session.pipelines.taillampPipeline); pass.draw(6,taillamps.length);
-      pass.setPipeline(session.pipelines.underglowPipeline); pass.draw(6,3);
     }
     if (session.taxi) {
       // Sort the transparent primitives on the camera's forward axis in cab coordinates.

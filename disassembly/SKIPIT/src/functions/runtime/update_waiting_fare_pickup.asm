@@ -1,10 +1,10 @@
-; Analyzer entry: 0001fa7c
-; Analyzer symbol: FUN_0001fa7c
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0001FA7C
+; Semantic name: update_waiting_fare_pickup
+; Evidence: Updates the waiting sprite and sets the pickup request when the cab shares its cell and absolute speed is below ten.
 
-%macro emit_function_0001fa7c_part_00 0
+%macro emit_update_waiting_fare_pickup_part_00 0
     %%fragment_start:
-function_0001fa7c:
+update_waiting_fare_pickup:
     %%insn_0001fa7c_1FA7C:
     push ebx ; 0001FA7C 53
     %if ($ - %%insn_0001fa7c_1FA7C) > 1

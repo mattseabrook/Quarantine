@@ -1,10 +1,10 @@
-; Analyzer entry: 00026c48
-; Analyzer symbol: FUN_00026c48
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00026C48
+; Semantic name: dispatch_player_actor_contact
+; Evidence: Scans twenty active-list indices, filters inactive or zero-radius actors, then dispatches the first overlap with a handled actor type.
 
-%macro emit_function_00026c48_part_00 0
+%macro emit_dispatch_player_actor_contact_part_00 0
     %%fragment_start:
-function_00026c48:
+dispatch_player_actor_contact:
     %%insn_00026c48_26C48:
     push ebx ; 00026C48 53
     %if ($ - %%insn_00026c48_26C48) > 1

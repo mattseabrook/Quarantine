@@ -1,10 +1,10 @@
-; Analyzer entry: 0004c784
-; Analyzer symbol: FUN_0004c784
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004C784
+; Semantic name: initialize_map_mine
+; Evidence: Sets class five, both collision radii to ten, Z to fourteen and the live update callback to object-one offset 3C6C8h.
 
-%macro emit_function_0004c784_part_00 0
+%macro emit_initialize_map_mine_part_00 0
     %%fragment_start:
-function_0004c784:
+initialize_map_mine:
     %%insn_0004c784_4C784:
     push ebx ; 0004C784 53
     %if ($ - %%insn_0004c784_4C784) > 1

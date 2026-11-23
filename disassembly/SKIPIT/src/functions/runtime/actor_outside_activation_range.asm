@@ -1,10 +1,10 @@
-; Analyzer entry: 0002569c
-; Analyzer symbol: FUN_0002569c
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0002569C
+; Semantic name: actor_outside_activation_range
+; Evidence: Compares player and current actor cell coordinates against inclusive limits of minus five and plus five on each axis.
 
-%macro emit_function_0002569c_part_00 0
+%macro emit_actor_outside_activation_range_part_00 0
     %%fragment_start:
-function_0002569c:
+actor_outside_activation_range:
     %%insn_0002569c_2569C:
     push ebx ; 0002569C 53
     %if ($ - %%insn_0002569c_2569C) > 1

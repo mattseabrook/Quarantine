@@ -1,10 +1,10 @@
-; Analyzer entry: 00043e58
-; Analyzer symbol: FUN_00043e58
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00043E58
+; Semantic name: player_overlaps_actor
+; Evidence: Tests inclusive overlap on three axes. The player uses half extents 32, 32 and 10. The actor supplies its horizontal and vertical radii.
 
-%macro emit_function_00043e58_part_00 0
+%macro emit_player_overlaps_actor_part_00 0
     %%fragment_start:
-function_00043e58:
+player_overlaps_actor:
     %%insn_00043e58_43E58:
     push ebx ; 00043E58 53
     %if ($ - %%insn_00043e58_43E58) > 1

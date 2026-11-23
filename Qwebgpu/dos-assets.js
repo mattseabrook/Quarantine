@@ -41,6 +41,20 @@ export function readPromptTables(bytes) {
     viewCells: Array.from({length:49}, (_,i) => [
       view.getInt16(base+0xa9ba+4*i,true), view.getInt16(base+0xa9bc+4*i,true),
     ]),
+    actorScan: {
+      columns:Array.from({length:21},(_,i) => view.getInt16(base+0x60b4+2*i,true)),
+      offsets:Array.from({length:20},(_,i) => [view.getInt16(base+0x6064+4*i,true),view.getInt16(base+0x6066+4*i,true)]),
+      lanes:Array.from({length:6},(_,i) => [view.getInt16(base+0x614c+4*i,true),view.getInt16(base+0x614e+4*i,true)]),
+      random:bytes.slice(base+0xaa7e,base+0xab7e),
+      gunBlocks:Array.from({length:4},(_,i) => view.getInt16(base+0x60e8+20*district+2*i,true)),
+      sweeps:Array.from({length:4},(_,row) => Array.from({length:17},(_,i) =>
+        view.getInt16(base+0xc580+2*(17*row+i),true))),
+      blastOffsets:Array.from({length:12},(_,i) => {
+        const descriptor = base+view.getUint32(base+0x9ee4+4*i,true);
+        return [view.getInt8(descriptor+5),view.getInt8(descriptor+6)];
+      }),
+      mineSelectors:Array.from({length:3},(_,i) => view.getInt16(base+0x5d68+12*(i+1),true)),
+    },
     panorama: bytes[base+0x97aa+district] !== 0,
     wallBanks: Array.from({length: 16}, (_, i) => stringAt(0x64e8 + district * 64 + i * 4).toUpperCase()),
     shadeWeights: Array.from({length:16}, (_, i) => view.getInt16(base+0x8c5a+2*i,true)),
@@ -51,6 +65,8 @@ export function readPromptTables(bytes) {
     thrust: Array.from({length: 18}, (_, i) => view.getInt16(base + 0x52a8 + i * 2, true)),
     sine: Array.from({length: 1441}, (_, i) => view.getInt16(base + 0x71a8 + i * 2, true)),
     // Landing selects row four of the 16-word vertical displacement patterns.
+    mineOffsets:Array.from({length:16},(_,i) => view.getInt16(base+0x8b90+i*2,true)),
+    shotOffsets:Array.from({length:16},(_,i) => view.getInt16(base+0x8b90+(16+i)*2,true)),
     landingOffsets: Array.from({length:16}, (_,i) => view.getInt16(base+0x8b90+(4*16+i)*2,true)),
     mapDisplay: {
       scaleX: view.getInt32(base + 0xc700, true), scaleY: view.getInt32(base + 0xc704, true),

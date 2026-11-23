@@ -1,10 +1,10 @@
-; Analyzer entry: 00045aa4
-; Analyzer symbol: FUN_00045aa4
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00045AA4
+; Semantic name: select_district_fare_record
+; Evidence: Returns zero when the special-fare limit or cooldown blocks selection. Otherwise returns one of two records for the current progress index and resets the cooldown.
 
-%macro emit_function_00045aa4_part_00 0
+%macro emit_select_district_fare_record_part_00 0
     %%fragment_start:
-function_00045aa4:
+select_district_fare_record:
     %%insn_00045aa4_45AA4:
     push ebx ; 00045AA4 53
     %if ($ - %%insn_00045aa4_45AA4) > 1

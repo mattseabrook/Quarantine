@@ -1,10 +1,10 @@
-; Analyzer entry: 00025350
-; Analyzer symbol: FUN_00025350
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00025350
+; Semantic name: scan_district_block_actor
+; Evidence: Matches the current block against ten district entries at DS:60E8 and selects the wall gun or the second block-actor initializer.
 
-%macro emit_function_00025350_part_00 0
+%macro emit_scan_district_block_actor_part_00 0
     %%fragment_start:
-function_00025350:
+scan_district_block_actor:
     %%insn_00025350_25350:
     push ebx ; 00025350 53
     %if ($ - %%insn_00025350_25350) > 1

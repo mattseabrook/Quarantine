@@ -1,10 +1,10 @@
-; Analyzer entry: 00025700
-; Analyzer symbol: FUN_00025700
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00025700
+; Semantic name: place_actor_in_road_lane
+; Evidence: Centers the actor for selector zero. Other selectors use the road class and the DS:614C coordinate table.
 
-%macro emit_function_00025700_part_00 0
+%macro emit_place_actor_in_road_lane_part_00 0
     %%fragment_start:
-function_00025700:
+place_actor_in_road_lane:
     %%insn_00025700_25700:
     push ebx ; 00025700 53
     %if ($ - %%insn_00025700_25700) > 1

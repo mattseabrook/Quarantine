@@ -52,23 +52,23 @@ function readGeometry(gltf, binary, monitor) {
   const indices = new Uint32Array(indexCount+(monitor ? 6 : 0));
   const low = new Vector3(Infinity,Infinity,Infinity), high = new Vector3(-Infinity,-Infinity,-Infinity);
   const p = new Vector3(), n = new Vector3(), t = new Vector3();
-  const draws = [], lensCenters = [], rearCandidates = [], screenBounds = new Box3();
+  const draws = [], lensCenters = [], rearBulbs = Array.from({length:6},() => new Box3()), screenBounds = new Box3();
   let first = 0, base = 0;
   for (const piece of pieces) {
     const {matrix,position,normal,tangent,uv,metalUV,normalUV} = piece;
     const normalMatrix = new Matrix3().getNormalMatrix(matrix), mirrored = matrix.determinant() < 0;
     const center = new Vector3();
     const lens = gltf.materials[piece.material].name === 'headlight_glass' ? new Box3() : null;
-    const rear = gltf.materials[piece.material].name === 'tail_light' ?
-      {box:new Box3(),sides:[new Box3(),new Box3()]} : null;
+    const tailGlass = !monitor && gltf.materials[piece.material].name === 'tail_light';
     for (let i=0; i<position.length/3; i++) {
       p.fromArray(position,3*i).applyMatrix4(matrix);
       low.min(p); high.max(p); center.add(p);
       if (monitor && gltf.materials[piece.material].name === 'monitor_screen') screenBounds.expandByPoint(p);
       lens?.expandByPoint(p);
-      if (rear) {
-        rear.box.expandByPoint(p);
-        rear.sides[Number(p.x >= 0)].expandByPoint(p);
+      // The rear face carries three separate lens islands on each side.
+      if (tailGlass && p.z < -2.55) {
+        const row = p.y < 0.87 ? 0 : p.y < 0.985 ? 1 : 2;
+        rearBulbs[3*Number(p.x >= 0)+row].expandByPoint(p);
       }
       n.fromArray(normal,3*i).applyNormalMatrix(normalMatrix);
       if (tangent) t.fromArray(tangent,4*i).transformDirection(matrix);
@@ -88,7 +88,6 @@ function readGeometry(gltf, binary, monitor) {
       front.z = lens.max.z;
       lensCenters.push(front);
     }
-    if (rear) rearCandidates.push(rear);
     if (!piece.hidden && (!monitor || gltf.materials[piece.material].name !== 'monitor_screen')) {
       draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
     }
@@ -134,8 +133,7 @@ function readGeometry(gltf, binary, monitor) {
   for (const draw of draws) draw.center = fit(draw.center.x,draw.center.y,draw.center.z);
   const centerZ = rideHeight-(high.y-low.y)*scale/2;
   const headlamps = lensCenters.map(p => fit(p.x,p.y,p.z));
-  rearCandidates.sort((a,b) => a.box.min.z-b.box.min.z);
-  const taillamps = (rearCandidates[0]?.sides ?? []).filter(box => !box.isEmpty()).map(box => {
+  const taillamps = rearBulbs.filter(box => !box.isEmpty()).map(box => {
     const p = box.getCenter(new Vector3());
     p.z = box.min.z;
     return fit(p.x,p.y,p.z);

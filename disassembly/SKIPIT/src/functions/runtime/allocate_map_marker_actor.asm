@@ -1,10 +1,10 @@
-; Analyzer entry: 000253e8
-; Analyzer symbol: FUN_000253e8
-; Boundary and name are provisional until independently verified.
+; Runtime address: 000253E8
+; Semantic name: allocate_map_marker_actor
+; Evidence: Reads MAP bits 10 through 15, tests the cell latch and installs the callback and parameter from the 12-byte DS:5D64 record.
 
-%macro emit_function_000253e8_part_00 0
+%macro emit_allocate_map_marker_actor_part_00 0
     %%fragment_start:
-function_000253e8:
+allocate_map_marker_actor:
     %%insn_000253e8_253E8:
     push ebx ; 000253E8 53
     %if ($ - %%insn_000253e8_253E8) > 1

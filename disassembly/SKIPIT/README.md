@@ -31,8 +31,8 @@ Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
 byte. The 1,019 documented entries comprise 1,014 analyzer-seeded functions and
 one additional wall animation callback in object 1, two gameport routines in
-object 2, and two VGA routines in object 3. Currently 184 entries have descriptive
-roles (18.06%), including probable identifications. The other 835 retain provisional names.
+object 2, and two VGA routines in object 3. Currently 201 entries have descriptive
+roles (19.73%), including probable identifications. The other 818 retain provisional names.
 This measures naming coverage, not verified behavioral coverage or browser parity.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
@@ -119,6 +119,20 @@ with heading and 101 degrees, wraps at 360, and divides by 45. The manual map
 waypoint is only one of several target-selection branches; passenger and other
 game-state branches are not yet implemented in Qwebgpu.
 
+The manual map call at `0x2CCDA` passes zero between engine stop and start
+calls. [Map input at 0x51538](src/functions/runtime/handle_city_map_input.asm)
+clears a direction flag before selecting a bay. The separate nonzero entry
+can request slot 28 (`CARDOOR.VOC`) at `0x50341` when `DS:138DA` is set and
+`DS:8C4C` is clear.
+
+[Current cell lookup at 0x26744](src/functions/runtime/read_current_district_cell.asm)
+stores the block id at `DS:137B0`. The vertical update at `0x317A1` uses
+that id to select district 2 block 41 and district 3 blocks 103 and 112.
+Both local coordinates must lie within 8 through 504 inclusive. Within
+that rectangle the routine skips ordinary support and hover processing.
+At `0x26435` the rebound requires the wall bearing to fall strictly inside
+the 45-degree cone on either side of the travel bearing.
+
 At New Game, `0x1044E` initializes the CD cursor and requests track 02.
 `0x10453` immediately advances the cursor and requests track 03 through lead-out.
 The return from the options menu at `0x10507` jumps to `0x10458`, beyond
@@ -131,6 +145,41 @@ indexed-effect descriptor at `0x4A8EE` and the engine descriptor at
 not yet established. The conditional horn request at
 [`0x1A7C0`](src/functions/unresolved/0001a750_fun_0001a750.asm) depends on
 game state not yet mapped in Qwebgpu. The player-triggered horn has an independent input path at `0x2CCFA`.
+
+## Actors, hazard contacts and fares
+
+The [actor contact dispatcher](src/functions/runtime/dispatch_player_actor_contact.asm)
+at `0x26C48` visits up to twenty indices into 124-byte records. Its
+[overlap test](src/functions/runtime/player_overlaps_actor.asm) includes height.
+At `0x4C65C` one contact changes the actor state to 3, requests damage
+and calls the hover impulse with power 30. At `0x4E67C` a different handler
+requires a subtype-table value of 4 and a zero actor counter, sets the counter
+to 10, requests 4 damage and calls the impulse with power 20. These paths
+require live actors. KCITY.MAP carries 211 markers of type 1, 65 of type 2 and 42 of type 3.
+All three dispatch to the same mine initializer. The parameters put the mine
+at the cell center or one of two lane offsets. The five-phase scanner at
+`0x25240` samples ahead of the cab, alternating marker allocation with other
+actor work. At `0x4C6C8` a live mine queues image 12 from CITYOBJ.SPR.
+Contact applies ENEMY.ENC word `198 + 10 * district` to an unarmoured cab.
+The explosion callback queues twelve BLAMMOG.SPR frames and retires the actor.
+
+The block scan at `0x25350` matches the first four district-one entries to
+block IDs 102 through 105. The mount is 32 units in from its assigned edge.
+At `0x4D778` the gun allocates a class-two projectile callback, `0x4DB28`,
+with a lifetime counter of 30. Its visual descriptor table at DS:C520 points
+to the ETRACERS.SPR bank. The first three movement steps skip the wall probe.
+The EMISSILE.SPR bank has a separate pointer at DS:13378.
+
+The [pickup update](src/functions/runtime/update_waiting_fare_pickup.asm)
+sets the pending flag at `0x1FBAB` when the cab occupies the waiting actor's
+cell and absolute speed is below 10. The fare-selection branch at `0x1FA38`
+calls the [district selector](src/functions/runtime/select_district_fare_record.asm).
+A zero result selects an ordinary fare with Watcom rand modulo 80 plus one.
+A nonzero result is negated for the [dialogue reader](src/functions/resource_io/read_fare_dialogue.asm).
+The reader opens the district's numbered file for negative selectors.
+The low seven bits of the progress byte index the special job, and its high
+bit selects the alternate record. The routine at `0x45B18` decrements the
+cooldown and advances that index for a negative fare selector.
 
 ## Manual challenge and VGA output
 

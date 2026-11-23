@@ -213,6 +213,18 @@ Hover ascent now stops at reverse-facing overhead floors using the modeled cab
 footprint. SKIPIT instead queries the player position with a 50-unit clearance;
 the browser applies the retail landing displacement sequence to the driver’s eye. Other vertical effects and their event triggers remain incomplete.
 
+The district actor scanner now activates mine-family MAP markers and the four
+directional wall-gun blocks in KCITY. Mines use the retail XY and Z overlap,
+district damage word, jump impulse, blast frames and pair of explosion cues.
+Unarmoured cab health starts at 400 and is visible in the console. Directional
+guns fire ETRACERS sprites on their sweep and burst schedule. The browser uses
+its existing wall sweep for projectile obstruction. The complete damage, death,
+shared actor scheduling and other weapon paths remain open.
+
+Chase cameras can see floor-textured caps over the backs of rectangular
+facades and adjoining enclosed empty cells. These surfaces live in the world
+mesh only. The hover light is evaluated on the receiving floor.
+
 SKIPIT loads per-district collision and trigger tables and initializes a
 128-byte district state array with district-specific values at `0x45340`.
 Its save routines serialize 104 address/size ranges, including an array of 50

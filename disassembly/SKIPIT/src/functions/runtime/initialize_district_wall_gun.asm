@@ -1,10 +1,10 @@
-; Analyzer entry: 0004d8b0
-; Analyzer symbol: FUN_0004d8b0
-; Boundary and name are provisional until independently verified.
+; Runtime address: 0004D8B0
+; Semantic name: initialize_district_wall_gun
+; Evidence: Latches the selected MAP cell, positions the gun by slot and sets its update callback, height, scale and initial sweep counters.
 
-%macro emit_function_0004d8b0_part_00 0
+%macro emit_initialize_district_wall_gun_part_00 0
     %%fragment_start:
-function_0004d8b0:
+initialize_district_wall_gun:
     %%insn_0004d8b0_4D8B0:
     push ebx ; 0004D8B0 53
     %if ($ - %%insn_0004d8b0_4D8B0) > 1

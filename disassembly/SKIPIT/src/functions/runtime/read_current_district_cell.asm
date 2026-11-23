@@ -1,10 +1,10 @@
-; Analyzer entry: 00026744
-; Analyzer symbol: FUN_00026744
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00026744
+; Semantic name: read_current_district_cell
+; Evidence: Uses signed world coordinates shifted by nine to read the MAP word. Stores the raw word, seven-bit block id, material variant and block attribute.
 
-%macro emit_function_00026744_part_00 0
+%macro emit_read_current_district_cell_part_00 0
     %%fragment_start:
-function_00026744:
+read_current_district_cell:
     %%insn_00026744_26744:
     push ebx ; 00026744 53
     %if ($ - %%insn_00026744_26744) > 1

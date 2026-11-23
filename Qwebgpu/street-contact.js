@@ -55,7 +55,7 @@ function breakDistanceTie(objects,eyeX,eyeY,z,eligible) {
 // 0x40964 collects kind-zero placements in the district queue's drawing order.
 // Keep the gameplay projection at the cab even while an exterior camera orbits.
 export function projectedStreetContact(car,district,sin,cos) {
-  const direction = Math.sign(car.speed >> 8);
+  const direction = Math.sign(car.velocity ?? (car.speed >> 8));
   if (!direction || !district.objectClasses) return null;
   const x = Math.trunc(car.x), y = Math.trunc(car.y), z = Math.trunc(car.z+car.seatOffset);
   const localX = x&511, localY = y&511;

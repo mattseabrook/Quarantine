@@ -1,3 +1,4 @@
+import {bearing} from './bearing.js';
 import {readSpriteBank} from './indexed-screen.js';
 
 function readOverlay(bytes, name) {
@@ -71,15 +72,6 @@ export async function loadMap(bytes, district, settings) {
   return {palette,background,icons,locations};
 }
 
-// 0x30980 uses a 256-entry arctangent table, with exact diagonals handled separately.
-function bearing(dx,dy,table) {
-  const x = Math.abs(dx), y = Math.abs(dy);
-  if (!x && !y) return 0;
-  const angle = x === y ? 45 : x > y ? table[Math.trunc(y*256/x)] : 90-table[Math.trunc(x*256/y)];
-  if (dx < 0) return dy < 0 ? 180+angle : 180-angle;
-  return dy < 0 && angle ? 360-angle : angle;
-}
-
 // 0x51710 computes cab-minus-bay deltas in district cells. 0x2E89F
 // rotates that bearing into one of the eight WAYP2 instrument lamps.
 function waypointDelta(car, bay, settings) {
@@ -90,9 +82,20 @@ function waypointDelta(car, bay, settings) {
 }
 
 export function tickWayfinder(car,settings) {
-  if (!car.waypoint) return;
-  const [dx,dy] = waypointDelta(car,car.waypoint,settings);
-  if (!dx && !dy) car.wayfinderPhase = (car.wayfinderPhase+1)&7;
+  const bay = car.waypoint;
+  if (!bay) {
+    car.arrivedWaypoint = null;
+    return false;
+  }
+  const [dx,dy] = waypointDelta(car,bay,settings);
+  if (dx || dy) {
+    car.arrivedWaypoint = null;
+    return false;
+  }
+  car.wayfinderPhase = (car.wayfinderPhase+1)&7;
+  const arrived = car.arrivedWaypoint !== bay;
+  car.arrivedWaypoint = bay;
+  return arrived;
 }
 
 export function cockpitWayfinder(canvas,wayfinder,district,crt = false) {
@@ -135,7 +138,7 @@ export function cockpitWayfinder(canvas,wayfinder,district,crt = false) {
   };
 }
 
-export function createMapView(display, map, car, settings) {
+export function createMapView(display, map, car, settings, onSelection) {
   const frame = new Uint8Array(320*200);
   const player = {
     x:Math.trunc(car.x)+settings.offsetX*256, y:Math.trunc(car.y)+settings.offsetY*256,
@@ -173,8 +176,10 @@ export function createMapView(display, map, car, settings) {
   }
   updateStrip();
   function select(location) {
+    if (target === location) return;
     target = location;
     car.waypoint = location;
+    onSelection?.();
     updateStrip();
   }
   return {

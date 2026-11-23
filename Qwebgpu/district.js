@@ -36,8 +36,8 @@ function streetLightGrid({tiles,width,height,mesh,palette}) {
 export async function readDistrict(getFile, start) {
   const jobs = [
     ['geometry',[start.map,start.blocks,start.bsp,start.floor,start.sky,'TEXTURE'+start.district+'.DAT',
-      'DATA'+start.district+'.DAT','ANIM'+start.district+'.DAT',...start.wallBanks]],
-    ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT','OBJ'+start.district+'.DAT']],
+      'DATA'+start.district+'.DAT','ANIM'+start.district+'.DAT','CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR',...start.wallBanks]],
+    ['tables',[start.map,'COLLDAT.DAT','TRIGDAT.DAT','ENEMY.ENC','OBJ'+start.district+'.DAT']],
     ['cockpit',['CAB.IMG','LDOOR35.IMG','WHEELSPR.SPR','FONT.SPR']],
   ];
   const workers = [];

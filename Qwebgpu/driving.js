@@ -1,3 +1,5 @@
+import {tickDistrictHazards} from './district-hazards.js';
+import {bearing} from './bearing.js';
 import {projectedStreetContact,resolveStreetContact} from './street-contact.js';
 import {cabBody, chaseRange, rideHeight} from './cab-dimensions.js';
 
@@ -21,9 +23,10 @@ function sine(table, angle) {
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
+    hazards:{mines:new Map(),guns:new Map(),shots:new Set(),phase:0,column:0,randomIndex:0},health:400,mineSound:null,
     supportZ:start.z, fallSpeed:0, hover:0, landingStep:0, landingDelay:0, seatOffset:0,
     wayfinderPhase:0, headlights:true, streetContact:null,
-    speed: 0, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
+    speed: 0, velocity: null, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
     camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
     chasePitch: null, chaseFloorLook: 0, chaseDistance: chaseRange.middle};
 }
@@ -275,6 +278,20 @@ function ceilingBetween(district,x,y,top,nextTop) {
 
 function followFloor(car,district) {
   const bounds = district.taxiBounds ?? fallbackBounds;
+  // 0x317A1 uses the cab origin for these lift tiles, even with an active hover.
+  const block = district.tiles[(car.y>>9)*district.width+(car.x>>9)] & 127;
+  const level = district.start.district;
+  if ((level === 3 && (block === 103 || block === 112)) || (level === 2 && block === 41)) {
+    const x = car.x & 511, y = car.y & 511;
+    if (x >= 8 && x <= 504 && y >= 8 && y <= 504) {
+      const limit = level === 3 && block === 103 ? -92 : -200;
+      if (car.z > limit) {
+        car.z -= 2;
+        if (car.z < limit) car.z = limit+10;
+      }
+      return;
+    }
+  }
   const angle = car.angle*Math.PI/2880, sin = Math.sin(angle), cos = Math.cos(angle);
   let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
   for (const [right,forward] of [[bounds.left,bounds.back],[bounds.right,bounds.back],
@@ -335,13 +352,16 @@ function followFloor(car,district) {
 export function driveTick(car, district, keys) {
   const impact = moveCab(car,district,keys);
   followFloor(car,district);
-  const offsets = district.start.landingOffsets;
+  tickDistrictHazards(car,district,ticksPerSecond,firstWallHit);
+  const offsets = district.start[car.seatEffect ?? 'landingOffsets'];
   car.seatOffset = 0;
   if (car.landingStep && offsets) {
     car.seatOffset = offsets[car.landingStep];
     if (--car.landingDelay < 0) {
       car.landingStep++;
-      if (offsets[car.landingStep] === 99 || car.landingStep >= offsets.length) car.landingStep = 0;
+      if (offsets[car.landingStep] === 99 || car.landingStep >= offsets.length) {
+        car.landingStep = 0; car.seatEffect = null;
+      }
       else car.landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
     }
   }
@@ -353,15 +373,15 @@ export function driveTick(car, district, keys) {
 
 function moveCab(car, district, keys) {
   const hz = ticksPerSecond;
-  const speed = car.speed >> 8;
+  const speed = car.velocity ?? (car.speed >> 8);
   const table = district.start.sine;
   const alignment = Math.abs(sine(table,(car.yawSlip >> 2)+quarter) >> 3);
-  if (keys.has('KeyW') || keys.has('ArrowUp')) {
+  if (keys.has('KeyW') || keys.has('ArrowUp') || keys.has('Numpad8')) {
     const band = Math.max(0, Math.min(district.start.thrust.length-1, speed >> 5));
     const impulse = Math.trunc(alignment*district.start.thrust[band]/hz);
     car.speed += impulse;
     if (car.speed < 0) car.speed += impulse;
-  } else if (keys.has('KeyS') || keys.has('ArrowDown')) {
+  } else if (keys.has('KeyS') || keys.has('ArrowDown') || keys.has('Numpad2')) {
     car.speed += Math.trunc(-976/hz)*64;
   } else {
     car.skidMode = false;
@@ -372,10 +392,10 @@ function moveCab(car, district, keys) {
   const turn = Math.trunc(1000/hz), center = Math.trunc(1536/hz);
   const alt = keys.has('AltLeft') || keys.has('AltRight');
   // Left has priority when both directions are down (0x1AF0C).
-  if (!alt && (keys.has('KeyA') || keys.has('ArrowLeft'))) {
+  if (!alt && (keys.has('KeyA') || keys.has('ArrowLeft') || keys.has('Numpad4'))) {
     car.steering = Math.min(480, car.steering+turn);
     if (car.steering < 0) car.steering = Math.min(0, car.steering+center);
-  } else if (!alt && (keys.has('KeyD') || keys.has('ArrowRight'))) {
+  } else if (!alt && (keys.has('KeyD') || keys.has('ArrowRight') || keys.has('Numpad6'))) {
     car.steering = Math.max(-480, car.steering-turn);
     if (car.steering > 0) car.steering = Math.max(0, car.steering-center);
   } else {
@@ -416,6 +436,8 @@ function moveCab(car, district, keys) {
   const sin = sine(table,newAngle), cos = sine(table,newAngle+quarter);
   const step = {velocity,dx:(Math.trunc(sin*velocity/hz)>>7)/8,dy:(Math.trunc(cos*velocity/hz)>>7)/8};
   resolveStreetContact(car,step,sin,cos,hz);
+  // Class 9 changes the accumulator but leaves the published speed word intact.
+  car.velocity = step.velocity;
   const {dx,dy} = step;
   if (!dx && !dy && !rotation) return 0;
   const hit = sweepCab(car,district,dx,dy,oldAngle,newAngle);
@@ -429,13 +451,25 @@ function moveCab(car, district, keys) {
   car.x += dx*advance; car.y += dy*advance;
   car.angle = wrap(oldAngle+Math.trunc(rotation*advance));
   const dot = dx*hit.nx+dy*hit.ny;
-  const headOn = dot*dot >= 0.5*(dx*dx+dy*dy);
+  // The impact cone excludes both 45-degree endpoints (0x26435).
+  const alongWall = dx*hit.ny-dy*hit.nx;
+  const bearings = district.start.mapDisplay?.bearings;
+  let headOn = Math.abs(dot) > Math.abs(alongWall);
+  if (bearings && (dx || dy)) {
+    // DOS compares the travel bearing with the wall bearing on the contacted side.
+    const travel = bearing(dy,dx,bearings);
+    const side = dot < 0 ? -1 : 1;
+    const wall = bearing(side*hit.ny,side*hit.nx,bearings);
+    const delta = Math.abs(travel-wall);
+    headOn = Math.min(delta,360-delta) < 45;
+  }
   if (headOn) {
-    car.speed = -(step.velocity >> 2)*256;
+    car.velocity = -(step.velocity >> 2);
+    car.speed = car.velocity*256;
     car.skidMode = false;
   } else {
     const tx = (dx-dot*hit.nx)*(1-advance), ty = (dy-dot*hit.ny)*(1-advance);
-    const slideAngle = wrap(car.angle+80*Math.sign(dot*(dx*hit.ny-dy*hit.nx)));
+    const slideAngle = wrap(car.angle+80*Math.sign(dot*alongWall));
     if (!sweepCab(car,district,tx,ty,car.angle,slideAngle)) {
       car.x += tx; car.y += ty; car.angle = slideAngle;
     }

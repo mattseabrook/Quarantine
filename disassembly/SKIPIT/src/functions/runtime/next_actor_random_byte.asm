@@ -1,10 +1,10 @@
-; Analyzer entry: 00041460
-; Analyzer symbol: FUN_00041460
-; Boundary and name are provisional until independently verified.
+; Runtime address: 00041460
+; Semantic name: next_actor_random_byte
+; Evidence: Increments the shared byte-table cursor modulo 256 and reads DS:AA7E plus that index.
 
-%macro emit_function_00041460_part_00 0
+%macro emit_next_actor_random_byte_part_00 0
     %%fragment_start:
-function_00041460:
+next_actor_random_byte:
     %%insn_00041460_41460:
     push edx ; 00041460 52
     %if ($ - %%insn_00041460_41460) > 1
