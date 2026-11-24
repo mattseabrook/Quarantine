@@ -122,9 +122,15 @@ A reload restarts the current drive. [Service and watcher](services/qwebgpu/).
 
 Folder selection and copy protection default to off in `Qwebgpu/config.json`.
 Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/README.md).
-Set `demo` to `true` for the early native shareware preview: its title and
-pan-and-scroll Core map use the supplied demo files, but driving and the
-original demo startup and menu are not yet ported. Set it to `false` for retail.
+Set `demo` to `true` for the in-progress native shareware port: it loads
+the demo's Core assets and uses the shared driving engine and browser
+controls. Actors, hazards, weapons, fares, demo engine audio and the original
+menu are not yet ported.
+Set it to `false` for retail.
+The included service blocks retail files, graphics exports and HD files outside
+a small allowlist in demo mode; generic static servers do not. Review
+distribution rights and deployment contents before publishing. See the
+[demo configuration](Qwebgpu/README.md#configuration) for the allowlist.
 
 | Screen | Input | Current behavior |
 | --- | --- | --- |

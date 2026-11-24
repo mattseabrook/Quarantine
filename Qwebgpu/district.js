@@ -3,7 +3,7 @@ import {loadStarCubemap} from './skybox.js';
 
 // Bin each lamp into the MAP cells touched by its light. A fragment only
 // visits the local list, including lamps planted across a block boundary.
-function streetLightGrid({tiles,width,height,mesh,palette}) {
+export function streetLightGrid({tiles,width,height,mesh,palette}) {
   const bins = new Map();
   tiles.forEach((word,i) => {
     const block = word&127;

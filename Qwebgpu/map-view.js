@@ -61,7 +61,9 @@ export async function loadMap(bytes, district, settings) {
     loadMapBackground(bytes), bytes('MAPICONS.SPR'), bytes('BAY'+district+'.DAT'),
   ]);
   const icons = readSpriteBank(iconBytes,139);
-  palette.set(settings.colors.slice(0,3*(settings.endColor-settings.firstColor)),3*settings.firstColor);
+  if (settings.colors) {
+    palette.set(settings.colors.slice(0,3*(settings.endColor-settings.firstColor)),3*settings.firstColor);
+  }
   const data = new DataView(bays.buffer,bays.byteOffset,bays.byteLength);
   if (data.byteLength%40) throw new Error('Incomplete bay record in district '+district);
   const locations = [];

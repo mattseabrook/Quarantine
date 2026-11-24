@@ -1,6 +1,6 @@
 {
   "copyProtection": false,
   "fileUpload": false,
-  "developerMode": true,
-  "demo": false
+  "developerMode": false,
+  "demo": true
 }

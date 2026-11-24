@@ -2,6 +2,7 @@
 
 import io
 import ipaddress
+import json
 import ssl
 import sys
 import threading
@@ -12,6 +13,16 @@ from urllib.parse import urlsplit
 root, revision, site, cert, key = sys.argv[1:]
 web_root = Path(root)
 game_roots = (web_root, web_root.parent / "MS-DOS", web_root.parent / "DEMO")
+retail_roots = (game_roots[1].resolve(), (web_root / "graphics").resolve())
+hd_root = (web_root / "HD").resolve()
+demo_hd = {
+    (hd_root / name).resolve() for name in (
+        "night-cubemap.webp", "cars/taxi/taxi.glb",
+        "cars/taxi/commodore_64__computer_full_pack.glb", "cars/taxi/license_plate.jpg",
+        *(f"{stem}.{ext}" for stem in ("QTITLE", "SKY", "CAB", "LDOOR35", "KFLOOR")
+          for ext in ("png", "PNG")),
+    )
+}
 revision = Path(revision)
 
 # Embed the revision of this page so a change during startup also triggers a reload.
@@ -66,6 +77,20 @@ class GameHandler(SimpleHTTPRequestHandler):
         if not any(target.is_relative_to(base) for base in game_roots) or not target.is_file():
             self.send_error(404)
             return None
+        retail = any(target.is_relative_to(base) for base in retail_roots)
+        if retail or target.is_relative_to(hd_root):
+            try:
+                config = json.loads((web_root / "config.json").read_text())
+                demo = config.get("demo", config.get("shareware", False))
+                if not isinstance(demo, bool):
+                    raise ValueError("demo must be boolean")
+            except (OSError, ValueError, AttributeError) as error:
+                self.log_error("Cannot determine game mode: %s", error)
+                self.send_error(503, "Invalid game configuration")
+                return None
+            if demo and (retail or target not in demo_hd):
+                self.send_error(404)
+                return None
         del self.headers["If-Modified-Since"]
         return super().send_head()
 

@@ -1,7 +1,7 @@
 import {readVoice} from './dos-assets.js';
 import {effectsOutput} from './settings.js';
 
-export async function loadDrivingSounds(context,getFile) {
+export async function loadDrivingSounds(context,getFile,{engineName = 'ENG7.VOC'} = {}) {
   async function load(name) {
     try {
       const file = await getFile(name,true);
@@ -13,9 +13,9 @@ export async function loadDrivingSounds(context,getFile) {
     }
   }
   const [engine,impact,horn,arrival,blast1,blast2,launch] = await Promise.all([
-    load('ENG7.VOC'),load('IMPACT.VOC'),load('HORN.VOC'),load('TING.VOC'),load('EXPLO1.VOC'),load('EXPLO2.VOC'),load('FIREBELC.VOC'),
+    engineName ? load(engineName) : null,load('IMPACT.VOC'),load('HORN.VOC'),load('TING.VOC'),load('EXPLO1.VOC'),load('EXPLO2.VOC'),load('FIREBELC.VOC'),
   ]);
-  return {engine,impact,horn,arrival,blasts:[blast1,blast2],launch,unavailable:[!launch && 'FIREBELC.VOC',!blast1 && 'EXPLO1.VOC',!blast2 && 'EXPLO2.VOC',!engine && 'ENG7.VOC',!impact && 'IMPACT.VOC',!horn && 'HORN.VOC',!arrival && 'TING.VOC'].filter(Boolean)};
+  return {engine,impact,horn,arrival,blasts:[blast1,blast2],launch,unavailable:[!launch && 'FIREBELC.VOC',!blast1 && 'EXPLO1.VOC',!blast2 && 'EXPLO2.VOC',!engine && (engineName ?? 'demo engine sound not yet ported'),!impact && 'IMPACT.VOC',!horn && 'HORN.VOC',!arrival && 'TING.VOC'].filter(Boolean)};
 }
 
 export function createDrivingAudio(context,sounds) {

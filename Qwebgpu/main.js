@@ -387,7 +387,10 @@ async function startGame() {
     unlockAudio();
     display ??= await createDisplay(screen);
     if (config.demo) {
-      await runDemo({screen, display, bytes, loadImage, launcher});
+      const clickBuffer = readVoice(audio,await bytes('CLICKER.VOC'),'CLICKER.VOC');
+      await runDemo({screen, display, bytes, getFile, getAudioTrack, audio, launcher,
+        click:() => audio.state === 'running' && sound(clickBuffer)});
+      status.textContent = 'Demo driving ended.';
       return;
     }
     if (config.developerMode) {

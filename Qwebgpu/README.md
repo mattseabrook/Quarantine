@@ -36,12 +36,17 @@ modify the DOS executable or its disassembly.
 
 Set `"demo": true` to use the shareware files from `Qwebgpu/QDEMO`
 (linked to `DEMO/`); `"demo": false` retains the retail SKIPIT path.
-Demo mode currently displays `QTITLE.GIF` and an explorable preview of the
-four demo Core map overlays. Press a key or tap to open the map, use the
-arrow keys to pan, and press Escape or tap to return to the title. This
-preview is a development aid, not the original demo menu: driving, fares,
-weapons, and the original demo startup flow are not yet ported.
-It does not use a DOS emulator, retail assets, or DOS4GW.
+Demo mode shows `QTITLE.GIF` while loading the demo Core, then enters the
+same native driving loop as SKIPIT using demo data. The shared controls,
+settings, camera, map, wayfinder and available sound effects apply; J also
+jumps. W drives rather than selecting the original demo's low-resolution
+mode; use minus and plus for resolution. Escape returns to the title.
+The map uses the demo overlays' palette without the still-unrecovered palette
+overrides. Demo engine audio, actors, hazards, weapons, fares and the
+original menu are not yet ported; demo shading and other renderer differences
+also need work. This is not yet demo parity.
+The native path does not run an executable or use an emulator, DOS4GW or
+retail game files. [Driving comparison](../disassembly/QDEMO/README.md#shared-driving-code).
 The demo path ignores `developerMode` and `copyProtection`; those settings
 continue to apply to retail. `demo` takes precedence over the earlier
 `shareware` setting when both are present.
@@ -57,6 +62,18 @@ save files; bind it to a trusted interface or restrict access. With folder
 selection enabled, the browser reads the selected files through its local
 file API. The menus and intro use the original 320×200
 framebuffer with 4:3 display correction. Gameplay fills the browser viewport.
+
+The included Qwebgpu service blocks `MS-DOS`, `graphics` and all but a small
+HD allowlist in demo mode. The allowlist contains the shared taxi, monitor,
+license plate and night cubemap, plus optional PNG replacements named
+`QTITLE`, `SKY`, `CAB`, `LDOOR35` and `KFLOOR`. Only supply replacements
+you have permission to distribute; an allowed filename is not a rights check.
+The taxi and monitor are CC BY 4.0, and the sky is CC0 (see their attribution
+below). Review the plate and all other files and their rights separately
+before publishing. A generic static server, including the example above,
+does not enforce these restrictions. This is not a distribution license or a
+complete public-deployment audit. The included service only accepts
+private-network clients; restart it after server changes.
 
 ### HD IMG replacements
 

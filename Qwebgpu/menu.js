@@ -151,7 +151,7 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, bytes, ta
   await vga.fade(image.dac, false);
 }
 
-async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, session) {
+export async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, session) {
   const {car, district} = session;
   const lastTick = {...car}, visibleCar = {...car};
   const events = new AbortController(), options = {signal: events.signal};
@@ -198,7 +198,8 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
   }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape opens the menu.');
+      'W and S drive, A and D steer. Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. '+(session.demo ? 'J or Z jumps. ' : '')+
+      'V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape '+(session.demo ? 'returns to the title.' : 'opens the menu.'));
   }
   function dismiss() { session.welcome = false; describe(); updateMouseCaptureUI(); }
   async function openMap() {
@@ -280,7 +281,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
       if (e.repeat) return;
       if (session.welcome) { dismiss(); captureMouse(); return; }
       if (e.code === 'Escape') { leaving = true; held.clear(); }
-      else if (e.code === 'KeyZ' && drivingInput()) startHover(car);
+      else if ((e.code === 'KeyZ' || session.demo && e.code === 'KeyJ') && drivingInput()) startHover(car);
       else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && drivingInput()) effects.horn();
       else if (['F1','F2','F3'].includes(e.code) && drivingInput()) {
         car.camera = 0;

@@ -1,71 +1,62 @@
-import {indexedDisplay} from './indexed-screen.js';
-import {loadMapBackground} from './map-view.js';
+import {indexedDisplay, readScreen, readSpriteBank} from './indexed-screen.js';
+import {coreResources, demoCoreFiles, loadDemoCore} from './demo-data.js';
+import {streetLightGrid} from './district.js';
+import {prepareCabPipelines} from './cab-view.js';
+import {newDriver} from './driving.js';
+import {loadDrivingSounds} from './driving-audio.js';
+import {loadHDImage} from './hd-images.js';
+import {loadStarCubemap} from './skybox.js';
+import {enterCab} from './menu.js';
 
-export const demoRequiredFiles = [
-  'QDEMO.EXE', 'QTITLE.GIF', ...[1,2,3,4].map(i => `KEMOMAP${i}.ZZZ`),
-];
+export const demoRequiredFiles = ['QTITLE.GIF','CLICKER.VOC','WAYP2.SPR', ...demoCoreFiles];
 
-export function validateDemoExecutable(bytes) {
-  if (bytes.length !== 462617 || bytes[0] !== 0x4d || bytes[1] !== 0x5a ||
-      bytes[0x2998] !== 0x4c || bytes[0x2999] !== 0x45) {
-    throw new Error('Select the supported QDEMO.EXE from the supplied shareware demo.');
-  }
-}
-
-function nextInput(screen) {
-  return new Promise(resolve => {
-    const events = new AbortController();
-    const options = {signal:events.signal};
-    function finish(key) {
-      events.abort();
-      resolve(key);
-    }
-    document.addEventListener('keydown', event => {
-      if (event.ctrlKey || event.altKey || event.metaKey) return;
-      event.preventDefault();
-      finish(event.key);
-    }, options);
-    screen.addEventListener('pointerdown', event => {
-      if (event.button === 0) finish('pointer');
-    }, options);
-  });
-}
-
-export async function runDemo({screen, display, bytes, loadImage, launcher}) {
-  validateDemoExecutable(await bytes('QDEMO.EXE'));
-  const [title,map] = await Promise.all([loadImage('QTITLE.GIF'),loadMapBackground(bytes)]);
+export async function runDemo({screen, display, bytes, getFile, getAudioTrack, audio, click, launcher}) {
+  const [titleBytes,hd] = await Promise.all([bytes('QTITLE.GIF'),loadHDImage('QTITLE.GIF')]);
+  const title = {...readScreen(titleBytes,'QTITLE.GIF'),hd};
   const vga = indexedDisplay(display,4);
   const hint = document.querySelector('#checkpoint');
-  const frame = new Uint8Array(320*200);
-  let left = 160, top = 100;
   launcher.hidden = true;
   screen.hidden = false;
   screen.focus();
   try {
-    for (;;) {
-      hint.textContent = 'Demo preview: press a key or tap to explore the Core map. Driving is not yet implemented.';
-      hint.hidden = false;
-      screen.setAttribute('aria-label', hint.textContent);
-      vga.setImage(title);
-      vga.present();
-      await vga.fade(title.dac,true);
-      await nextInput(screen);
-      await vga.fade(title.dac,false);
-      hint.textContent = 'Demo Core map preview: arrow keys pan; Escape or tap returns to the title. Driving is not yet implemented.';
-      screen.setAttribute('aria-label', hint.textContent);
-      for (;;) {
-        for (let y=0; y<200; y++) {
-          frame.set(map.background.subarray((top+y)*640+left,(top+y)*640+left+320),y*320);
-        }
-        display.presentIndexed(frame,map.palette,true,true);
-        const key = await nextInput(screen);
-        if (key === 'Escape' || key === 'pointer') break;
-        if (key === 'ArrowLeft') left = Math.max(0,left-16);
-        if (key === 'ArrowRight') left = Math.min(320,left+16);
-        if (key === 'ArrowUp') top = Math.max(0,top-16);
-        if (key === 'ArrowDown') top = Math.min(200,top+16);
-      }
+    hint.textContent = 'Loading demo Core assets…';
+    hint.hidden = false;
+    screen.setAttribute('aria-label', hint.textContent);
+    vga.setImage(title);
+    vga.present();
+    await vga.fade(title.dac,true);
+    const prepared = prepareCabPipelines(display);
+    const [data,pipelines,sounds,taxi,wayfinder,hdSky,hdCab,hdDoor,hdFloor,starCubemap] = await Promise.all([
+      loadDemoCore(getFile),prepared,loadDrivingSounds(audio,getFile,{engineName:null}),
+      Promise.all([prepared,import('./taxi-model.js')]).then(([p,{loadTaxi}]) =>
+        loadTaxi(display.device,p.taxi.materialLayout)),
+      bytes('WAYP2.SPR').then(raw => readSpriteBank(raw,37)),
+      loadHDImage(coreResources.sky),loadHDImage(coreResources.cab),loadHDImage(coreResources.door),
+      loadHDImage(coreResources.floor),loadStarCubemap(),
+    ]);
+    const district = {...data,start:coreResources,hdSky,hdCab,hdDoor,hdFloor,starCubemap,
+      taxiCenterZ:taxi?.centerZ,taxiBounds:taxi?.bounds};
+    district.streetLights = streetLightGrid(district);
+    const session = {demo:true,district,pipelines,sounds,taxi,wayfinder,car:newDriver(district),welcome:false,resolution:Infinity};
+    await vga.fade(title.dac,false);
+    hint.hidden = true;
+    try {
+      await enterCab({display,screen,getAudioTrack,bytes,audio,click},session);
+    } finally {
+      session.disc?.close();
     }
+    hint.textContent = 'Demo driving ended. Press a key or click to return to the launcher; the original menu is not yet implemented.';
+    hint.hidden = false;
+    screen.setAttribute('aria-label',hint.textContent);
+    vga.setImage(title);
+    vga.present();
+    await vga.fade(title.dac,true);
+    await new Promise(resolve => {
+      const events = new AbortController();
+      const finish = () => { events.abort(); resolve(); };
+      document.addEventListener('keydown',finish,{signal:events.signal});
+      screen.addEventListener('click',finish,{signal:events.signal});
+    });
   } finally {
     hint.hidden = true;
   }

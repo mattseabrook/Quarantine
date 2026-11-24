@@ -2,7 +2,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readScreen} from './indexed-screen.js';
 import {loadMapBackground} from './map-view.js';
-import {runDemo, validateDemoExecutable} from './demo.js';
 
 function image(signature) {
   const codes = [];
@@ -54,55 +53,3 @@ test('assembles the four demo map overlays and rejects incomplete data', async (
     name === 'KEMOMAP3.ZZZ' ? new Uint8Array(768) : mapBytes(name)),/Invalid map overlay/);
 });
 
-test('rejects an incorrect demo executable', () => {
-  assert.throws(() => validateDemoExecutable(new Uint8Array(16)),/QDEMO.EXE/);
-  const bytes = new Uint8Array(462617);
-  bytes.set([0x4d,0x5a]);
-  bytes.set([0x4c,0x45],0x2998);
-  assert.doesNotThrow(() => validateDemoExecutable(bytes));
-  bytes[0x2998] = 0;
-  assert.throws(() => validateDemoExecutable(bytes),/QDEMO.EXE/);
-});
-
-test('demo preview switches from title to pannable map and back', async () => {
-  const oldDocument = globalThis.document;
-  const doc = new EventTarget(), hint = {hidden:true};
-  doc.querySelector = () => hint;
-  globalThis.document = doc;
-  const screen = new EventTarget();
-  screen.focus = () => {};
-  screen.setAttribute = (name,value) => { screen[name] = value; };
-  const frames = [];
-  const done = new Error('test complete');
-  const display = {presentIndexed(frame, palette, changed, linear) {
-    frames.push({pixel:frame[0],linear});
-    if (frames.length === 4) throw done;
-  }};
-  const exe = new Uint8Array(462617);
-  exe.set([0x4d,0x5a]); exe.set([0x4c,0x45],0x2998);
-  const game = runDemo({screen,display,launcher:{},bytes: name =>
-    name === 'QDEMO.EXE' ? Promise.resolve(exe) : mapBytes(name),
-    loadImage: async () => ({planes:new Uint8Array(64000),dac:new Uint8Array(768)})});
-  const finished = assert.rejects(game,error => error === done);
-  const waitFor = async count => {
-    for (let i=0; i<100 && frames.length<count; i++) await new Promise(resolve => setImmediate(resolve));
-    assert.equal(frames.length,count);
-  };
-  const press = key => { const event = new Event('keydown'); event.key = key; doc.dispatchEvent(event); };
-  try {
-    await waitFor(1);
-    assert.match(hint.textContent,/Driving is not yet implemented/);
-    press('Enter');
-    await waitFor(2);
-    assert.equal(frames[1].linear,true);
-    assert.equal(frames[1].pixel,(100*320+160+1)&255);
-    press('ArrowRight');
-    await waitFor(3);
-    assert.equal(frames[2].pixel,(100*320+176+1)&255);
-    press('Escape');
-    await finished;
-    assert.equal(hint.hidden,true);
-  } finally {
-    globalThis.document = oldDocument;
-  }
-});

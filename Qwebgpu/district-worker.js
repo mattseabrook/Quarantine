@@ -220,6 +220,24 @@ async function prepare(part, files, start) {
     return new Uint8Array(await file.arrayBuffer());
   }
   async function image(name) { return readScreen(await bytes(name), name); }
+  if (part === 'demoCore') {
+    const [geometry,grid,cab,door,wheels,objects] = await Promise.all([
+      prepare('geometry',files,start),
+      bytes(start.map).then(raw => readMap(raw,start.map)),
+      image(start.cab),image(start.door),
+      bytes('WHEELSPR.SPR').then(raw => readSpriteBank(raw,raw[0])),
+      bytes('OBJ1.DAT'),
+    ]);
+    const objectClasses = [];
+    for (const row of new TextDecoder().decode(objects).split(/\r?\n/)) {
+      if (!row || row === 'EOF') break;
+      if (!/^\d+$/.test(row)) throw new Error('Invalid sprite class row in OBJ1.DAT');
+      objectClasses.push(Uint8Array.from(row,Number));
+    }
+    const cockpit = cockpitTexture(cab,door,wheels,start,[]);
+    return {value:{...geometry.value,...grid,cockpit,objectClasses},
+      transfer:[...geometry.transfer,grid.tiles.buffer,cockpit.pixels.buffer]};
+  }
   if (part === 'cockpit') {
     const [cab, door, wheelBytes, fontBytes] = await Promise.all([image('CAB.IMG'),image('LDOOR35.IMG'),bytes('WHEELSPR.SPR'),bytes('FONT.SPR')]);
     const cockpit = cockpitTexture(cab,door,readSpriteBank(wheelBytes,7),start,readMaskFont(fontBytes));
@@ -264,12 +282,12 @@ async function prepare(part, files, start) {
   // MAP-indexed directory to the renderer, lights, diagnostics and physics.
   const empty = {faces:[],wallRuns:[],placements:[],materials:new Uint8Array(),variantStride:0};
   const blocks = start.blockRecords.map(record => records[record] ?? empty);
-  const [city,blast,gun,tracer,missile] = await Promise.all(['CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR','EMISSILE.SPR'].map(async name => {
+  const [city,blast,gun,tracer,missile] = start.demo ? [[],[],[],[],[]] : await Promise.all(['CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR','EMISSILE.SPR'].map(async name => {
     const raw = await bytes(name);
     return readSpriteBank(raw,raw[0],{planar:false});
   }));
   const grid = readMap(map,start.map);
-  const mesh = districtMesh({grid,missile,missileViews:start.actorScan.missileViews,blastOffsets:start.actorScan.blastOffsets,hazardFrames:[city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
+  const mesh = districtMesh({grid,missile,missileViews:start.actorScan?.missileViews,blastOffsets:start.actorScan?.blastOffsets,hazardFrames:start.demo ? [] : [city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
     bankNames:start.wallBanks,panorama:start.panorama,flatSkyIndex});
   const wallDepth = wallDepthLayers(blocks,grid,flags);
   // The CPU driver only needs vertical segments. Send flat collision arrays,
