@@ -31,8 +31,8 @@ Known functions are grouped by subsystem, including audio, copy protection,
 graphics, level exit, platform, resource I/O, runtime, and traffic. The project represents every executable
 byte. The 1,019 documented entries comprise 1,014 analyzer-seeded functions and
 one additional wall animation callback in object 1, two gameport routines in
-object 2, and two VGA routines in object 3. Currently 201 entries have descriptive
-roles (19.73%), including probable identifications. The other 818 retain provisional names.
+object 2, and two VGA routines in object 3. Currently 208 entries have descriptive
+roles (20.41%), including probable identifications. The other 811 retain provisional names.
 This measures naming coverage, not verified behavioral coverage or browser parity.
 
 The [repository research report](../../README.md) covers the DOS/4GW LE
@@ -168,7 +168,23 @@ block IDs 102 through 105. The mount is 32 units in from its assigned edge.
 At `0x4D778` the gun allocates a class-two projectile callback, `0x4DB28`,
 with a lifetime counter of 30. Its visual descriptor table at DS:C520 points
 to the ETRACERS.SPR bank. The first three movement steps skip the wall probe.
-The EMISSILE.SPR bank has a separate pointer at DS:13378.
+Block IDs 20, 21, 22, 23 and 123 take the other branch at `0x253B8`.
+Their initializer at `0x4F3B4` installs `0x4F1FC`, which alternates two
+offsets and headings from DS:C688, plays effect 7 (FIREBELC.VOC), and allocates
+a missile with callback `0x21FF0` and a 100-update lifetime. The callback
+requests ENEMY.ENC damage word `199 + 10 * district` on a cab hit.
+At `0x22229` it passes selector one to the directional sprite routine.
+That selects DS:63E8 and the EMISSILE.SPR descriptors at DS:6368.
+The launch flash uses the twelve-frame explosion callback with sound suppressed.
+The cab contact test at `0x2694C` accepts projectile Z at or below the
+screen-space height threshold (numerically Z >= -25) and requires both XY
+differences to be strictly less than 48 in magnitude. The missile checks
+obstruction before the cab, while the wall tracer checks the cab first.
+At `0x221C2` the missile compares the cab heading with the opposite of the
+heading in scratch word DS:13854 after rounding both to cardinal sectors.
+A match installs `0x3E4D8`. Each update places the explosion 64 units along
+the cab heading at cab Z + 8, sets scale 2048, and submits the BLAMMOG frame.
+This callback makes no explosion sound request.
 
 The [pickup update](src/functions/runtime/update_waiting_fare_pickup.asm)
 sets the pending flag at `0x1FBAB` when the cab occupies the waiting actor's
@@ -213,3 +229,29 @@ cover the options dispatcher, slot selector and save format.
 | `0x46FC0`, `0x4756C`, `0x4779C` | Load the slot screen and both fonts, draw five rows with two sprite styles, and center the state-specific instructions. |
 | `0x476D8`, `0x478E8` | Read slot descriptions and the separate occupancy flag. Description bytes outside printable ASCII space through uppercase Z become spaces. |
 | `0x479B0`, `0x47A4C` | Occupied saves start with ASCII 1 and a 40-byte description. The reader and writer then walk the same 104 address/size records at object offset AFA0h, ending at a zero-size record. One record covers 50 entries of 124 bytes. The post-read pass at 47B78h converts their stored indices back to runtime references. |
+
+## Cab scale and contact
+
+At `0x25D10` the five XY pairs starting at DS:130C8 receive the current
+player position. The movement path constructs radius-120 endpoints at
+−25°, +25°, −13°, +13° and 0° relative to travel, traces from the
+stored positions and retains accepted endpoints. The floor routine at
+`0x3188B…0x31AF7` samples the center and radius 100 at ±25° around
+the front and rear headings. Its level-road origin is 20 units above
+the surface. These distances describe distinct queries. The projectile
+routine at `0x2694C` uses strict 48-unit XY limits and an absolute
+projectile Z threshold of −25. None of these routines specifies a roof height.
+
+
+## District trigger tiles
+
+The district loader copies 128 TRIGDAT words into DS:E8B0. At
+`0x258D1`, [one actor spawn routine](src/functions/runtime/spawn_actor_on_district_trigger_tile.asm)
+requires a value of at least two. It uses a free record from actor-list
+entries 10 through 19, aligns the placement to a 512-unit tile origin,
+and chooses among three descriptors with a district-specific exception.
+A separate path at `0x17113` rejects values zero and two before
+placement. The two comparisons establish that the table has multiple
+consumers and that the values have context-dependent meanings.
+
+The launcher dispatch at `0x253C4` calls [acquire_free_district_actor](src/functions/runtime/acquire_free_district_actor.asm) with the half-open slot range 0 through 20. The launch callback uses the selected port offsets at DS:C688. KCITY includes paired-port blocks at map cells (197,12) and (197,34), counted from the file origin.

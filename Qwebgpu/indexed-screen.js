@@ -57,7 +57,8 @@ function decodeIndices(data, minBits) {
 export function readScreen(bytes, filename) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const fail = () => { throw new Error('Unsupported image in ' + filename); };
-  if (bytes.length < 781 || new TextDecoder().decode(bytes.subarray(0, 6)) !== 'IMAGEX' ||
+  const signature = new TextDecoder().decode(bytes.subarray(0, 6));
+  if (bytes.length < 781 || !['IMAGEX', 'GIF87a', 'GIF89a'].includes(signature) ||
       view.getUint16(6, true) !== WIDTH || view.getUint16(8, true) !== HEIGHT ||
       (bytes[10] & 0x87) !== 0x87) fail();
   let pos = 13;

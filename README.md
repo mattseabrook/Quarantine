@@ -122,6 +122,9 @@ A reload restarts the current drive. [Service and watcher](services/qwebgpu/).
 
 Folder selection and copy protection default to off in `Qwebgpu/config.json`.
 Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/README.md).
+Set `demo` to `true` for the early native shareware preview: its title and
+pan-and-scroll Core map use the supplied demo files, but driving and the
+original demo startup and menu are not yet ported. Set it to `false` for retail.
 
 | Screen | Input | Current behavior |
 | --- | --- | --- |
@@ -142,20 +145,21 @@ Place matching HD PNGs in `Qwebgpu/HD`. [Browser controls and startup](Qwebgpu/R
 | Sound the horn | Enter consumes scan code `1Ch` and plays effect slot 15 once. Qwebgpu plays the installed `HORN.VOC` through Sound FX. The separate game-state horn at `0x1A7C0` still depends on actor simulation. [Driving action handler](disassembly/SKIPIT/src/functions/runtime/handle_driving_action_keys.asm) |
 | Look out of the cab | F1, F2 and F3 select +90°, 0° and −90° relative to the cab. In Qwebgpu they also return the player to the seat from chase view. Mouse look can continue from each preset. [Keyboard view selection](disassembly/SKIPIT/src/functions/runtime/select_cockpit_keyboard_view.asm) |
 | Open options during a CD track | At `0x1044E` and `0x10453`, New Game initializes the CD cursor and immediately advances it to track 03. Resume returns to `0x10458`, past both requests. The browser keeps one disc player across options, including its playhead and paused state. The intro still uses track 02. [Main loop](disassembly/SKIPIT/src/functions/runtime/game_main.asm) |
-| Land after pressing Z | The key supplies power 32. On touchdown the retail landing path clears active hover and selects displacement pattern four. The browser applies its signed offsets to the driver's eye on simulation ticks. The fitted GLB and its collision footprint stay on the road. [Hover entry](disassembly/SKIPIT/src/functions/runtime/start_player_hover.asm) · [Offset sequencer](disassembly/SKIPIT/src/functions/runtime/advance_player_vertical_offset.asm) |
+| Land after pressing Z | The key supplies power 32. On touchdown the retail landing path clears active hover and selects displacement pattern four. The browser applies its signed offsets to the driver's eye on simulation ticks. The exterior cab stays on the road during the seat displacement. [Hover entry](disassembly/SKIPIT/src/functions/runtime/start_player_hover.asm) · [Offset sequencer](disassembly/SKIPIT/src/functions/runtime/advance_player_vertical_offset.asm) |
 | Reach a selected bay | When both cell deltas are zero the eight Wayfinder lamps cycle. The browser advances the lamp on driving updates and keeps its phase across pause and Resume. [Wayfinder](disassembly/SKIPIT/src/functions/graphics/draw_cockpit_wayfinder.asm) |
 | Watch the title or intro FLI | The retail pass counts decode and display work toward the frame interval. The browser waits for the remainder of that interval. The AVI wrapper and CD playback have independent clocks. [FLI pass](disassembly/SKIPIT/src/functions/graphics/play_interruptible_fli_pass.asm) |
 
 **Remaining gameplay differences.** New Game enters the Core. Placed street fixtures use the district’s BLK placements, BSP draw order and OBJ contact classes. The Core stop sign (page 0, image 13) gives the cab a class-5 lateral slide. Traffic, pedestrians, fares, damage, weapons, garages and district progression need their runtime state. The map supports manual destinations. Passenger and mission destinations depend on that missing state. The five-slot menu reads save headers and ends restore at the loading screen. The browser Resume operation retains the current session in memory.
 
-**Deliberate presentation and control choices.** The fixed 35 Hz driving clock, fitted cab footprint, free mouse look, chase camera, adjustable FOV, full-map sightlines, HD art, dynamic lights and persistent settings are browser features. Distant fixed lamps have a small screen-space footprint so their glow fades through subpixel sizes. Ordinary surfaces still use district depth shading and haze.
+**Deliberate presentation and control choices.** The fixed 35 Hz driving clock, exterior model fit, free mouse look, chase camera, adjustable FOV, full-map sightlines, HD art, dynamic lights and persistent settings are browser features. Distant fixed lamps have a small screen-space footprint so their glow fades through subpixel sizes. Ordinary surfaces still use district depth shading and haze.
 
 ### Build status
 
 | Target | Entry point | Last reported result |
 | --- | --- | --- |
 | Retail DOS executable | `./disassembly/SKIPIT/build.sh` | 572,501 bytes, SHA-256 and independent `cmp` match the reference |
-| 16-bit joystick object | Same script | 174 bytes, independent SHA-256 passes |
+| Shareware DOS executable | `./disassembly/QDEMO/build.sh` | 462,617 bytes; SHA-256 verified against the supplied QDEMO |
+| 16-bit joystick object | `./disassembly/SKIPIT/build.sh` | 174 bytes, independent SHA-256 passes |
 | Q2026 Windows/Vulkan fixture | `./build.sh` | Compiles and links `Q2026/Quarantine.exe`. The target renders its fixture map. |
 | Qwebgpu | Static JavaScript modules | Earlier Chromium run covered AVI playback, startup and the main menu. The current New Game street renderer awaits player testing. The latest sky palette trace and WebGPU lighting changes await a rebuild and player testing respectively. |
 
@@ -176,6 +180,11 @@ build:
 4. separately assembles and verifies the exact 174-byte 16-bit joystick object.
 
 It does not modify or deploy into `MS-DOS/`.
+
+The shareware executable has a separate [QDEMO reconstruction](disassembly/QDEMO/).
+Run `./disassembly/QDEMO/build.sh` to rebuild it byte-for-byte. Its
+analyzer-derived code and function boundaries are provisional, and its
+semantic behavior has not yet been ported to Qwebgpu.
 
 ## Disassembly progress
 
@@ -325,8 +334,7 @@ Both words are required in order to enable the hidden flag:
 SKIPIT sassy version
 ```
 
-That flag changes randomized construction of layered `BODA` civilian/traffic
-vehicle sprites. Optional parts may be omitted where the ordinary path always
+That flag changes randomized construction of layered `BODA` figures. Optional parts may be omitted where the ordinary path always
 supplies them.
 
 The final argument may independently be `noengine`. It suppresses continuous
@@ -520,7 +528,7 @@ the full instrument panel remain open.
 | Camera and cockpit | F1/F2/F3 choose left, forward, and right views. A side view can present the side weapon. The cockpit reports heading, radar, speed, battery, and waypoint direction. | The driver handbook describes the views and instruments. `CAB.IMG`, `WHEELSPR.SPR`, and the gauge sprites identify resources used by the dashboard. |
 | Fares | Stop by a hailing passenger, review the destination or mission, then accept or decline. The fare meter tracks time and payment. E ejects the passenger or carried object. | The handbook describes the interaction and `FARE*.ENC` provides dialogue data. The payment and scheduling state machines are still being recovered. |
 | Missions and gates | Deliver fares to unlock special jobs. The retail readme places the first special job after four fares and describes a gate password after about seven special jobs. | The gate entry and case-sensitive verifier are known. Per-district objectives and exact progression thresholds still need code-level validation. |
-| Traffic and pedestrians | The city presents independent vehicles and pedestrians. The retail notes describe traffic that can react after being attacked. | The `BODA` sprite-layer selection and its hidden startup flag are recovered. AI decisions, spawn timing, and path selection remain under analysis. |
+| Traffic and pedestrians | The city presents independent vehicles and pedestrians. The retail notes describe traffic that can react after being attacked. | The `BODA` figure-layer selection and its hidden startup flag are recovered. AI decisions, spawn timing, and path selection remain under analysis. |
 | Weapons and ammunition | Space fires the primary or side weapon, Alt cycles special weapons, and Ctrl fires the selected special weapon. | The handbook describes inputs and ammunition displays. Weapon-specific updates, collision volumes, and damage rules still need tracing. |
 | Garage and armor | Shops sell weapons and upgrades. The handbook lists three armor tiers and a temporary turbo boost. | `BAY*.DAT` and `BAY*.KPG` cover shop data and door transitions. The complete inventory and pricing rules remain under analysis. |
 | Map and navigation | M opens the map, arrow keys move the waypoint, and Escape returns to driving. A fare updates the Wayfinder destination. | `KEMOMAP*.ZZZ` provide indexed map layers. The game draws icons and state overlays through the map routine, including calls around `0x50668`. |
@@ -538,7 +546,7 @@ The DOS projection at `0x30DC8` computes screen X as
 `160 + 256 * side / max(depth, 12)`. The half-width is 160 pixels and the
 focal length is 256 pixels, giving a horizontal field of view of
 `2 * atan(160/256)`, approximately **64.0°**. The shared Y projection adds 100 to
-`256 * (height − eyeZ) / depth` at `0x30E22`–`0x30E28`. Qwebgpu has a user-selectable horizontal field of view of 60°–120°, initially 110°.
+`256 * (height − eyeZ) / depth` at `0x30E22`–`0x30E28`. Qwebgpu has a user-selectable horizontal field of view of 60°–120°, initially the retail projection (about 64°).
 Both driving cameras use the selected angle. The viewport aspect determines vertical coverage.
 [DOS projection routine](disassembly/SKIPIT/src/functions/graphics/project_view_points_at_height.asm).
 
@@ -849,10 +857,10 @@ position relative to the material normal, the eye, and the cab’s roughness map
 
 | Component | Geometry and behavior |
 | --- | --- |
-| Cockpit | The HD camera pivots above and behind the GLB's modeled steering wheel. Cockpit and chase share its geometry and materials. The original welcome lettering appears over the model. Head movement spans 100° to either side and 45° up or down. |
-| HD model fit | On a level road, `0x31AF7` subtracts 20 from the supporting floor to set the vehicle origin. Qwebgpu scales the distance between the GLB’s lowest tyre and its modeled driver's eye to those 20 units. The resulting car measures approximately 79 long × 30 wide × 27 high. One MAP cell spans 512 units. |
-| Calibration | The eye above the HD steering wheel is a placement choice. The 120-unit wall probe is a gameplay distance. The executable supplies no dimensions for this replacement model. |
-| Chase camera | F toggles the view. The boom ranges from 46 to 260 units, initially 76. At minimum zoom it is just above the cab bottom; at maximum its ground-relative height doubles from the former far setting. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
+| Cockpit | The world camera uses the simulated cab origin and seat displacement. The HD cockpit offsets its modeled seat to that eye. Cockpit and chase share its geometry and materials. The original welcome lettering appears over the model. Head movement spans 100° to either side and 45° up or down. |
+| HD model fit | On a level road, `0x31AF7` subtracts 20 from the supporting floor to set the vehicle origin. Qwebgpu uniformly scales the exterior to the longitudinal spacing of the front and rear floor samples, about 181 units. One MAP cell spans 512 units. |
+| Calibration | The support span supplies an exterior length reference. The GLB supplies its proportions. SKIPIT has separate distances for walls, floor support and projectile hits. |
+| Chase camera | F toggles the view. The boom ranges from 106 to 600 units, initially 235. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
 
 At `0x2620A`, SKIPIT forms five headings around the direction of travel in
 the order −25°, +25°, −13°, +13°, 0°. At `0x262D5` it multiplies the
@@ -860,8 +868,7 @@ heading components by 120 and shifts by 11 to undo the sine table's scale.
 At `0x26392` it traces the displacement between old and new probe positions.
 The wall routine filters by height and uses the first material pair of the BLK
 wall run to check back-side contact (bit 1) and non-solid crossings (bit 3).
-Qwebgpu sweeps the fitted cab perimeter and wall endpoints across translation and steering changes. Its wall response uses a continuous intersection fraction
-and a clearance margin. Full DOS damage and airborne contact remain open.
+Qwebgpu traces each previous probe position to its candidate position, using the movement heading. Impact response is approximate. Full DOS damage and airborne contact remain open.
 [Recovered movement routine](disassembly/SKIPIT/src/functions/runtime/resolve_player_wall_contact.asm).
 
 For placed fixtures, `0x40A7C` accepts origins strictly within 50 world units to either side and between 0 and 100 units in the direction of travel. The first eligible placement in draw order supplies its OBJ page and image, including when its class has no driving response. Classes 4–6 push sideways at quarter, full and double speed. Class 7 stops the cab, class 8 reverses part of its speed, and class 9 adjusts the speed accumulator. Qwebgpu collects the candidate at the cab on each 35 Hz driving tick. Free look, chase and reflection views can move independently. [Street contact implementation](Qwebgpu/street-contact.js) · [Retail class dispatch](disassembly/SKIPIT/src/functions/runtime/resolve_player_sprite_contact.asm).
@@ -1133,3 +1140,13 @@ signatures, strings, and xrefs. The permanent source tree under
 The project-authored code and documentation are available under the [MIT License](LICENSE).
 Third-party components retain their own notices. The original Quarantine executable,
 game data, artwork, and audio remain subject to their respective rights holders' terms.
+
+## Shareware file inventory
+
+The installed shareware directory is `DEMO/`. The browser exposes this directory as `QDEMO/`. This inventory compares regular files by case-insensitive DOS filename and full file contents. There are 165 demo files and 567 commercial files, including 432 names exclusive to the commercial directory.
+
+| Shareware compared with MS-DOS | Count | Filenames |
+| --- | ---: | --- |
+| Identical name and bytes | 77 | `AARGH1.VOC`, `AARGH2.VOC`, `AARGH3.VOC`, `BFONT1.SPR`, `BFONT2.SPR`, `BFONT3.SPR`, `BLAMMOG.SPR`, `BODA1.SPR`, `BODA2.SPR`, `BODA26.SPR`, `BODA27.SPR`, `BODA74.SPR`, `BODA97.SPR`, `BOSSGUY1.SPR`, `BOSSGUY2.SPR`, `CAB1SPR.SPR`, `CANNON1.SPR`, `CANNON4.SPR`, `COMPSPR.SPR`, `CONFIG.DAT`, `CYCTSPR.SPR`, `CYCTWIN.SPR`, `DAMAGE.SPR`, `DATA1.DAT`, `DOS4GW.EXE`, `EMINES.SPR`, `EMISSILE.SPR`, `ETRACERS.SPR`, `EXPLO.SPR`, `EXPLO1.VOC`, `EXPLO2.VOC`, `FIRE.SPR`, `FLOOR1.DAT`, `GUN1.NEW`, `GUN1.SPR`, `HAHAHA.VOC`, `HOODGUN.VOC`, `IMPACT.VOC`, `INPUT.DAT`, `KWALL1.SPR`, `KWALL10.SPR`, `KWALL12.SPR`, `KWALL15.SPR`, `KWALL2.SPR`, `KWALL3.SPR`, `KWALL4.SPR`, `KWALL7.SPR`, `KWALL8.SPR`, `MAKOCAM.SPR`, `MAPICONS.SPR`, `MFLASH.SPR`, `MINE1.SPR`, `MINEWALK.SPR`, `MISSILE1.SPR`, `MISSILE3.SPR`, `OW12.SPR`, `OW22.SPR`, `OW31.SPR`, `OW41.SPR`, `PEDH1.SPR`, `PEDH2.SPR`, `PEDH3.SPR`, `PEDH4.SPR`, `PLASMA2.SPR`, `PUNISHER.VOC`, `RICOCHET.VOC`, `SPIKE.SPR`, `TAXI1.VOC`, `TAXI4.VOC`, `WAYP2.SPR`, `WHEELSPR.SPR`, `WRADAR12.SPR`, `WRADAR21.SPR`, `WRADAR22.SPR`, `WRADAR31.SPR`, `WRADAR32.SPR`, `WRADAR41.SPR` |
+| Identical name, different bytes | 58 | `ANIM1.DAT`, `BAY0.DAT`, `BAY1.DAT`, `BAY2.DAT`, `BFONT4.SPR`, `BODA28.SPR`, `BODA29.SPR`, `BODA3.SPR`, `BODA75.SPR`, `BODA78.SPR`, `BODA79.SPR`, `BODA80.SPR`, `BODA98.SPR`, `BODA99.SPR`, `CABFONT.SPR`, `CITYGUN.SPR`, `CITYOBJ.SPR`, `CLICKER.VOC`, `CWICON1.SPR`, `CWICON2.SPR`, `CWICON3.SPR`, `CWICON4.SPR`, `EFFECTS.SPR`, `EJECT3.VOC`, `EPLASMA.SPR`, `FIREBELC.VOC`, `FLAMTHRO.VOC`, `FONT.SPR`, `FONT2.SPR`, `HORN.VOC`, `INAMES.SPR`, `INSTALL.EXE`, `KCITY.BLK`, `KCITY.BSP`, `KCITY.MAP`, `KEMOMAP1.ZZZ`, `KEMOMAP2.ZZZ`, `KEMOMAP3.ZZZ`, `KEMOMAP4.ZZZ`, `KOBJECTS.SPR`, `KWALL11.SPR`, `KWALL13.SPR`, `KWALL14.SPR`, `KWALL5.SPR`, `KWALL6.SPR`, `KWALL9.SPR`, `OBJ1.DAT`, `OW61.SPR`, `RADAR2.SPR`, `SHAD8DK.SPR`, `SOUND.DAT`, `SOUND.DRV`, `TAXI2.VOC`, `TAXI3.VOC`, `TEXTURE1.DAT`, `TING.VOC`, `UZISPR.SPR`, `UZISPR2.SPR` |
+| Unique to the demo | 30 | `44MAGNUM.VOC`, `A32SBDG.DLL`, `A32SBPDG.DLL`, `A32SPKR.DLL`, `CAB.GIF`, `CANNON1.NEW`, `ENEMY.DAT`, `FARE.TXT`, `GAME.DAT`, `HELLOFE.VOC`, `HELLOMA.VOC`, `INSTALL.BAT`, `KFLOOR.GIF`, `LDOOR35.GIF`, `MISSION.TXT`, `MISSION1.DAT`, `NULL`, `PKUNZIP.EXE`, `PUMTFR-1.SPR`, `QCREDIT2.GIF`, `QDEMO.EXE`, `QTITLE.GIF`, `QUARANT.ZIP`, `QUARDEMO.TXT`, `SCRIPT1.DAT`, `SKY.GIF`, `TAXD.VOC`, `THANKS.VOC`, `TIP1.TXT`, `WEAPKING.GIF` |

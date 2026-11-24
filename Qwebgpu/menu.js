@@ -133,7 +133,6 @@ async function loadFromMenu({screen, display, vga, loadImage, getFile, bytes, ta
             loadTaxi(display.device,p.taxi.materialLayout)),
           bytes('WAYP2.SPR').then(data => readSpriteBank(data,37)),
         ]);
-        district.taxiEye = taxi?.eye;
         district.taxiCenterZ = taxi?.centerZ;
         district.taxiBounds = taxi?.bounds;
         await vga.fade(image.dac, false);
@@ -417,6 +416,7 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
             while (accumulator >= dt) {
               Object.assign(lastTick,car);
               if (driveTick(car,district,held)) effects.contact();
+              if (car.launchSound) effects.launch();
               if (car.mineSound !== null) effects.explode(car.mineSound);
               if (tickWayfinder(car,district.start.mapDisplay)) effects.arrive();
               view.tickMaterials();
@@ -480,10 +480,19 @@ async function enterCab({display, screen, getAudioTrack, bytes, audio, click}, s
 
 export async function runMainMenu(game) {
   const {screen, vga, tables, bytes, loadImage, click} = game;
-  const image = await loadImage('OPTION.IMG');
-  const choices = readSpriteBank(await bytes('OPTIONC.SPR'), 5);
   let selected = 0, session;
   let rows = coldRows;
+  if (game.developerMode) {
+    session = await loadFromMenu(game,false);
+    if (session) {
+      try { await enterCab(game,session); }
+      catch (error) { session.disc?.close(); throw error; }
+      rows = [0,1,2,4];
+      selected = 1;
+    }
+  }
+  const image = await loadImage('OPTION.IMG');
+  const choices = readSpriteBank(await bytes('OPTIONC.SPR'), 5);
   function draw() {
     vga.setImage(image);
     vga.sprite(choices[selected], menuX, tables.menuY[selected], true);

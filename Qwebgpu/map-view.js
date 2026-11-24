@@ -42,22 +42,26 @@ function stamp(pixels, pitch, sprite, left, top, transparent) {
   }
 }
 
-export async function loadMap(bytes, district, settings) {
-  const [layers,iconBytes,bays] = await Promise.all([
-    Promise.all([1,2,3,4].map(async number => {
-      const name = 'KEMOMAP'+number+'.ZZZ';
-      return readOverlay(await bytes(name),name);
-    })),
-    bytes('MAPICONS.SPR'), bytes('BAY'+district+'.DAT'),
-  ]);
-  const icons = readSpriteBank(iconBytes,139);
+export async function loadMapBackground(bytes) {
+  const layers = await Promise.all([1,2,3,4].map(async number => {
+    const name = 'KEMOMAP'+number+'.ZZZ';
+    return readOverlay(await bytes(name),name);
+  }));
   const palette = layers[3].palette;
-  palette.set(settings.colors.slice(0,3*(settings.endColor-settings.firstColor)),3*settings.firstColor);
   const background = new Uint8Array(640*400);
   layers.forEach(({pixels},i) => {
     const start = (i>>1)*200*640+(i&1)*320;
     for (let y=0; y<200; y++) background.set(pixels.subarray(320*y,320*y+320),start+640*y);
   });
+  return {palette,background};
+}
+
+export async function loadMap(bytes, district, settings) {
+  const [{palette,background},iconBytes,bays] = await Promise.all([
+    loadMapBackground(bytes), bytes('MAPICONS.SPR'), bytes('BAY'+district+'.DAT'),
+  ]);
+  const icons = readSpriteBank(iconBytes,139);
+  palette.set(settings.colors.slice(0,3*(settings.endColor-settings.firstColor)),3*settings.firstColor);
   const data = new DataView(bays.buffer,bays.byteOffset,bays.byteLength);
   if (data.byteLength%40) throw new Error('Incomplete bay record in district '+district);
   const locations = [];

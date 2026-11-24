@@ -1,5 +1,5 @@
 import {Box3, Matrix3, Matrix4, Vector3} from './vendor/three/three.core.js';
-import {rideHeight} from './cab-dimensions.js';
+import {cabBody,rideHeight} from './cab-dimensions.js';
 
 // Model-space metres in the supplied GLB. The wheel is at (+0.42, 1.09, +0.80)
 // and the headlights face +Z. Place the eye above and behind the wheel.
@@ -10,7 +10,7 @@ const cache = new WeakMap();
 const wheelNodes = new Set(['Cylinder.004_2','Cylinder.005_3','Cylinder.006_4','Cylinder.007_5',
   'Cylinder.008_6','Cylinder.009_7','Cylinder.010_8','Cylinder.011_9']);
 
-function readGeometry(gltf, binary, monitor) {
+function readGeometry(gltf, binary, monitor, cabRatio) {
   function accessor(id, components, componentType) {
     const a = gltf.accessors[id], v = gltf.bufferViews[a.bufferView];
     if (a.componentType !== componentType || (v.byteStride && v.byteStride !== components*4)) {
@@ -36,7 +36,8 @@ function readGeometry(gltf, binary, monitor) {
           if (id === undefined) throw new Error('Missing texture coordinates in vehicle model');
           return accessor(id,2,5126);
         }
-        pieces.push({matrix,position,indices,normal:accessor(NORMAL,3,5126),uv:accessor(TEXCOORD_0,2,5126),
+        const plateUV = !monitor && material.name === 'numberplate' ? gltf.accessors[TEXCOORD_0] : null;
+        pieces.push({matrix,position,indices,normal:accessor(NORMAL,3,5126),uv:accessor(TEXCOORD_0,2,5126),plateUV,
           metalUV:textureUV(material.pbrMetallicRoughness.metallicRoughnessTexture),
           normalUV:textureUV(material.normalTexture),
           tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material,hidden});
@@ -74,7 +75,14 @@ function readGeometry(gltf, binary, monitor) {
       if (tangent) t.fromArray(tangent,4*i).transformDirection(matrix);
       else t.set(0,0,0);
       const at = (base+i)*16;
-      vertices.set([p.x,p.y,p.z,-n.x,n.z,-n.y,uv[i*2],uv[i*2+1],-t.x,t.z,-t.y,
+      let u = uv[i*2], v = uv[i*2+1];
+      if (piece.plateUV) {
+        // The original plate occupies one rectangle in a lettering atlas.
+        const {min,max} = piece.plateUV;
+        u = (u-min[0])/(max[0]-min[0]);
+        v = (max[1]-v)/(max[1]-min[1]);
+      }
+      vertices.set([p.x,p.y,p.z,-n.x,n.z,-n.y,u,v,-t.x,t.z,-t.y,
         tangent ? tangent[i*4+3]*(mirrored ? -1 : 1) : 0,
         metalUV[i*2],metalUV[i*2+1],normalUV[i*2],normalUV[i*2+1]],at);
     }
@@ -104,7 +112,8 @@ function readGeometry(gltf, binary, monitor) {
     }
     function fit(x,y,z) {
       x = (x-center.x)*scale; y = (y-center.y)*scale; z = (z-center.z)*scale;
-      return direction(x,y,z*depthScale).map((value,i) => value+mount[i]);
+      const local = direction(x,y,z*depthScale).map((value,i) => value+mount[i]);
+      return [local[0]*cabRatio,local[1]*cabRatio,rideHeight+(local[2]-rideHeight)*cabRatio];
     }
     for (let at=0; at<vertices.length; at+=16) {
       vertices.set(fit(vertices[at],vertices[at+1],vertices[at+2]),at);
@@ -126,8 +135,8 @@ function readGeometry(gltf, binary, monitor) {
     draws.push({first:indexCount,count:6,material,center:fit(center.x,center.y,z)});
     return {vertices,indices,draws};
   }
-  // Match the distance from the lowest tyre to the modeled eye to SKIPIT’s road-to-eye height.
-  const scale = rideHeight/(driverEye[1]-low.y), midX = (low.x+high.x)/2, midZ = (low.z+high.z)/2;
+  // Uniformly fit the authored body proportions to the retail support span.
+  const scale = cabBody.length/(high.z-low.z), midX = (low.x+high.x)/2, midZ = (low.z+high.z)/2;
   function fit(x,y,z) { return [(midX-x)*scale,(z-midZ)*scale,rideHeight-(y-low.y)*scale]; }
   for (let at=0; at<vertices.length; at+=16) vertices.set(fit(vertices[at],vertices[at+1],vertices[at+2]),at);
   for (const draw of draws) draw.center = fit(draw.center.x,draw.center.y,draw.center.z);
@@ -143,7 +152,7 @@ function readGeometry(gltf, binary, monitor) {
     back:(low.z-midZ)*scale, front:(high.z-midZ)*scale,
     top:rideHeight-(high.y-low.y)*scale, bottom:rideHeight,
   };
-  return {vertices,indices,draws,eye:fit(...driverEye),centerZ,headlamps,taillamps,bounds};
+  return {vertices,indices,draws,cabRatio:scale*(driverEye[1]-low.y)/rideHeight,eye:fit(...driverEye),centerZ,headlamps,taillamps,bounds};
 }
 
 const mipShader = `
@@ -158,7 +167,7 @@ struct Pixel { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   return textureSampleLevel(src,linearSampler,p.uv,0.0);
 }`;
 
-async function uploadModel(device,materialLayout,url,monitor = false) {
+async function uploadModel(device,materialLayout,url,monitor = false,cabRatio = 1) {
   const response = await fetch(url);
   if (response.status === 404) {
     if (monitor) console.warn('Commodore dashboard model not found:',url.href);
@@ -173,7 +182,7 @@ async function uploadModel(device,materialLayout,url,monitor = false) {
   }
   const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(file,20,jsonLength)));
   const binary = new Uint8Array(file,28+jsonLength);
-  const geometry = readGeometry(gltf,binary,monitor);
+  const geometry = readGeometry(gltf,binary,monitor,cabRatio);
   const {vertices,indices,draws,centerZ,headlamps,taillamps,bounds} = geometry;
   const allocated = [];
   function buffer(data,usage) {
@@ -208,11 +217,20 @@ async function uploadModel(device,materialLayout,url,monitor = false) {
         fragment:{module,entryPoint:'fragment',targets:[{format}]}}));
     }
     const images = [];
+    const plate = !monitor && selectedMaterials.find(m => m.name === 'numberplate');
+    const plateSource = plate && gltf.textures[plate.pbrMetallicRoughness.baseColorTexture.index].source;
     for (const [i,image] of gltf.images.entries()) {
       if (!neededImages.has(i)) continue;
       const v = gltf.bufferViews[image.bufferView], offset = v.byteOffset ?? 0;
-      const bitmap = await createImageBitmap(new Blob([binary.subarray(offset,offset+v.byteLength)],{type:image.mimeType}),
-        {colorSpaceConversion:'none',premultiplyAlpha:'none'});
+      let blob;
+      if (i === plateSource) {
+        const plateResponse = await fetch(new URL('license_plate.jpg',url));
+        if (!plateResponse.ok) throw new Error('Unable to load taxi license plate (HTTP '+plateResponse.status+')');
+        blob = await plateResponse.blob();
+      } else {
+        blob = new Blob([binary.subarray(offset,offset+v.byteLength)],{type:image.mimeType});
+      }
+      const bitmap = await createImageBitmap(blob,{colorSpaceConversion:'none',premultiplyAlpha:'none'});
       try {
         const format = srgb.has(i) ? 'rgba8unorm-srgb' : 'rgba8unorm';
         const levels = 1+Math.floor(Math.log2(Math.max(bitmap.width,bitmap.height)));
@@ -245,7 +263,7 @@ async function uploadModel(device,materialLayout,url,monitor = false) {
       if (!used.has(i)) return null;
       const pbr = m.pbrMetallicRoughness;
       const factors = buffer(new Float32Array([...(pbr.baseColorFactor ?? [1,1,1,1]),
-        pbr.metallicFactor ?? 1,pbr.roughnessFactor ?? 1,m.normalTexture?.scale ?? 1,
+        pbr.metallicFactor ?? 1,pbr.roughnessFactor ?? 1,m === plate ? 0 : m.normalTexture?.scale ?? 1,
         m.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0,
         Number(m.name === 'headlight_glass'),Number(m.name === 'tail_light'),
         Number(!monitor && ['aluminium.001','aloominum','Metallic','mirror'].includes(m.name)),
@@ -259,7 +277,7 @@ async function uploadModel(device,materialLayout,url,monitor = false) {
     const opaque = [], glass = [];
     for (const d of draws) (gltf.materials[d.material].alphaMode === 'BLEND' ? glass : opaque).push(d);
     opaque.sort((a,b) => a.material-b.material);
-    return {eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
+    return {cabRatio:geometry.cabRatio,eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
       const parts = transparent ? glass : opaque;
       if (transparent) {
         for (const d of parts) d.depth = d.center.reduce((sum,x,i) => sum+x*direction[i],0);
@@ -282,7 +300,7 @@ async function uploadModel(device,materialLayout,url,monitor = false) {
 export function loadTaxi(device,materialLayout) {
   if (!cache.has(device)) cache.set(device,(async () => {
     const taxi = await uploadModel(device,materialLayout,assetURL);
-    if (taxi) taxi.monitor = await uploadModel(device,materialLayout,monitorURL,true);
+    if (taxi) taxi.monitor = await uploadModel(device,materialLayout,monitorURL,true,taxi.cabRatio);
     return taxi;
   })().catch(error => {
     cache.delete(device);

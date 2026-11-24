@@ -1,0 +1,20 @@
+M
+50,50,E
+SRSLSSSRLRS
+
+
+
+;Mission Data
+;M Designates start of mission data for vehicle interseption
+;x,y,dir start of vehicle
+;S = Straight
+;L = Left
+;R = Right directions at intersections
+
+
+
+
+
+
+
+

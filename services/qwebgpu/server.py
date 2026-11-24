@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 root, revision, site, cert, key = sys.argv[1:]
 web_root = Path(root)
-retail_root = web_root.parent / "MS-DOS"
+game_roots = (web_root, web_root.parent / "MS-DOS", web_root.parent / "DEMO")
 revision = Path(revision)
 
 # Embed the revision of this page so a change during startup also triggers a reload.
@@ -63,7 +63,7 @@ class GameHandler(SimpleHTTPRequestHandler):
             return self.reply(page, "text/html; charset=utf-8")
 
         target = Path(self.translate_path(self.path)).resolve()
-        if not (target.is_relative_to(web_root) or target.is_relative_to(retail_root)) or not target.is_file():
+        if not any(target.is_relative_to(base) for base in game_roots) or not target.is_file():
             self.send_error(404)
             return None
         del self.headers["If-Modified-Since"]

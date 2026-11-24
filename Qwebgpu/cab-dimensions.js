@@ -1,5 +1,8 @@
-// SKIPIT places the driving origin 20 units above the supporting floor (0x31AF7).
+// SKIPIT 0x3188B..0x31AF7 samples the road at the origin and at radius
+// 100 on bearings ±25 and 180±25 degrees. The span is a reference for
+// fitting the replacement exterior, not an authored DOS mesh dimension.
 export const rideHeight = 20;
-// Rounded exterior dimensions for the fallback body when the GLB is unavailable.
-export const cabBody = Object.freeze({length:78, width:30, height:27, base:rideHeight});
-export const chaseRange = Object.freeze({near:46, middle:76, far:260});
+export const supportRadius = 100;
+export const cabBody = Object.freeze({length:2*supportRadius*Math.cos(25*Math.PI/180),
+  width:68.3, height:62, base:rideHeight});
+export const chaseRange = Object.freeze({near:106, middle:235, far:600});

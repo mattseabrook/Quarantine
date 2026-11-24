@@ -1,0 +1,259 @@
+Welcome to the Quarantine Playable Demo
+
+Change to the directory into which the demo was installed, then
+run the install program by typing 
+INSTALL  [enter]
+The install program will help you set up your 
+keyboard/Thrustmaster steering wheel and sound device.
+
+To run the game type
+QDEMO    [enter]
+
+Sound: 
+At this time only  DMA 1, 220 address, is supported, however the IRQ can be
+changed.
+
+Quick Keyboard Reference:
+
+Steering           - Right and left arrow keys
+Accelerate         - Up arrow key
+Brake / Reverse    - Down arrow key
+Spacebar           - Hood Guns
+M                  - Map
+Esc                - Exit to Main Menu
+ALT                - Select Weapon
+CNTRL              - Fire Weapon
+ENTER              - Horn
+J                  - Jump
+N                  - Nitro Boost (Argon Cells)
+Q                  - Normal resolution
+W                  - Low resolution(Faster screen updates)
+F1                 - Look Left
+F2                 - Look Ahead
+F3                 - Look Right
+F10                - "Curse key"
+
+How to play:
+The object of Quarantine is to escape Kemo, a prison city.  
+Kemo contains five separate areas surrounded by impenetrable walls.  
+
+Kemo's areas include :
+
+Downtown Core- A shopping mall, highway, glass, steel and concrete. *
+
+The Park - An open air park with canals, zoo of horrors, and scenic canyon
+just to name a few highlights.
+
+Old Kemo - Old markets, Classy residential areas, commercial districts 
+and hospitals surround these tight and twisty roads.
+
+Projects - Burning housing projects, a football stadium, and a power plant 
+are a few attractions in this shell-shocked warzone.
+
+The Wharf - Perpetually raining, the wharf contains a harbor, rail yard and 
+possible escape...
+
+*****************************************************
+* Only the Downtown Core is available in this demo. *
+*****************************************************
+
+The Object:
+You are Drake Edgewater, a cab driver driving a hovercab armed only with 
+headlight-mounted machine-guns.  
+To escape from Quarantine you must arm your vehicle with weapons, 
+discover secret entrances and travel in the underground from area to area.  
+To earn money,  you can pick up and deliver passengers.
+
+
+!****  NOTE: In this demo all missions and plot advancement has been removed!
+You can only pickup and drop off passengers and purchase weapons. In the full
+game you will learn the complete story, and take on special missions to 
+advance in the game.
+
+
+How to Play:
+
+Picking up passengers.
+
+To pick up a passenger, drive around wherever you like.  
+If you see a passenger waving at you, stop next to him or her.  
+You will be shown a map of the Downtown Core.  The yellow arrow represents 
+your current location in the city and a line indicates where to passenger 
+would like to go. The estimated time of travel will be indicated in the 
+lower left corner.  You will only get paid if you can deliver the passenger 
+ON TIME!  You can accept or reject the fare by typing 'Y' or 'N'
+
+Delivering a passenger.
+In the cab view, a wayfinder in the lower right of the dashboard will 
+indicate the distance and direction of your destination.  When the arrow is 
+pointing up, you are headed in the right direction.  A compass above your 
+windshield will also help you navigate.  You'll still have to do some of your 
+own navigating, so if you get lost check the map by typing 'M'. A meter on the 
+left side of the dashboard displays how much time is left and how much money 
+you have in total.
+When you reach the passenger's destination the wayfinder arrow will spin and 
+the distance meter will display zero kilometers.  To drop the passenger off, 
+you must stop completely on the exact destination.  The passenger will 
+proceed to leave the cab and pay your fee.  If you were late, the passenger 
+will pay you a reduced amount or possibly nothing, so try to be prompt!  
+
+Navigating the Downtown Core:
+Typing 'M' will bring up a map of Kemo.  If you are without a passenger you 
+can set your wayfinder to any of a number of service and weapon bays.  Move 
+the cursor to your desired destination with the 'arrow keys' then hit the 
+spacebar.  The wayfinder will now be set to the service or weapon bay of your 
+choice.  The wayfinder arrow works the same way it does when you have a 
+passeng\er.  Kemo security has set up perimeter defenses around the outside 
+walls of each area.  It is not advisable to use them as regular routes.
+
+Driving:
+You will be driving a modified 1952 Checker equipped with 'hovercoils'.  
+Under the roads are superconductive cables providing the 'lift' which all of 
+Kemo's vehicles require.  For travel off the 'power grid', batteries may be 
+purchased.  Downtown Core has so few areas without a powergrid that batteries 
+will not be needed in this demo.  Use the arrow keys to steer, accelerate and 
+brake.
+You can look out the side windows using the 'F1' or 'F3' keys and 'F2' to 
+look straight ahead.
+
+Arming yourself:
+Kemo (being a prison city affected by a mind altering corporate drug 
+experiment) is prone to a lot of violence.  Someone may get in your way so 
+you must be equipped to deal with it.  The game starts with hood guns and 
+250 bullets. Of course you probably crave MORE firepower!  In the weapon bays 
+you can find a variety of weapons and ammo to suit your cab driving needs.  
+Use the arrow keys and spacebar to navigate the menus.  All weapons come 
+fully loaded with the maximum capacity of ammo.  If you buy another weapon of 
+the same class, (Roof mounted, right fender, missile launcher or mine rack) 
+you will be refunded for the existing weapon.
+
+Combat:
+
+You can fire your hood guns by using the spacebar (top button on a 
+Thrustmaster Steering Wheel).  The bullet count is right above your steering 
+wheel.
+The display on the top of the screen displays the other weapons (if you have 
+purchased some).  You can switch between weapons using the 'ALT' key.  The 
+remaining ammo is also displayed.  To fire the selected weapon use the 'CNTRL' 
+key (lower button on the Thrustmaster Steering Wheel).
+
+Gates:
+
+You may notice steel gates blocking the road from time to time.  The gates 
+are controlled by Kemo Security.  The only way to get through them is by 
+taking a passenger through whose destination is on the inside of the area.
+
+W key:
+
+If you have a slower machine we have incorporated a low res mode. Pressing
+the 'W' key will activate this mode enabling much higher screen refreshes.
+Press 'Q' to return to normal resolution.
+
+
+Requirements:
+
+386/33, 486/33 recomended
+MSDOS
+4 megs of RAM
+640K Conventional Memory
+Sound Blaster (optional)
+Thrustmaster steering wheel (optional)
+Joystick not implemented for DEMO!
+
+-If there are problems running this demo on a 4 meg machine, try to disable 
+smartdrv to allow for the required 4 megs. Also disabling any memory managers 
+would be helpfull. Another option is to create a minimum boot disk.
+
+
+The Story:
+2022 Kemo City is the jewel of the West and the hovercar capital of the world.  
+A prosperous city on the east coast of the United States.
+Like any metropolis, Kemo City has a growing crime problem.  The inner ghetto 
+area of Kemo is perceived to be a money pit where any law enforcement would be 
+both futile and frivolous.  The solution is to make the old "inner Kemo" a 
+demilitarized zone.
+
+2026 Kemo City's crime problem reaches epidemic proportions.  The economy in 
+the "inner Kemo" slows to a near halt.  Crime and black market trading are 
+the only sources of income for inner Kemo's impoverished inhabitants.  The 
+new markets and commercial districts form a ring around  "inner Kemo", but 
+citizens are still stalked by the cesspool of criminal activity in the deadly 
+ghetto.
+
+2029 Ray Larabie is elected as mayor of New Kemo.  One of Ray's campaign 
+promises is to build a wall around inner Kemo and eliminate the crime 
+problem; the project is simply codenamed "Q".  The wall will contain a park, 
+market, housing project, office core, and industrial coastal area.
+
+2030  A ring of properties are purchased by the government around inner Kemo 
+at very reasonable prices.  An armed citizen's task force assembles in 
+opposition to project "Q".  Unmanned and well armored construction vehicles 
+begin construction of a  5 meter thick, 10 meter high wall composed of 
+plasticized concrete and steel.  Inhabitants of inner Kemo are told that the 
+wall is merely a sound baffle and gates will allow passage to New Kemo.  
+Within Kemo, the city is being sectioned off into five sections: Downtown 
+Core, Old Kemo, Kemo Park, the Projects and the Wharf.
+
+2031  The wall around inner Kemo nears completion.  A few of inner Kemo's 
+inhabitants leave, but most return after finding no work opportunities in New 
+Kemo.  Only one route leads in and out of the city, and a military presence 
+is established at the lone exit.
+
+2032  After an armed standoff,  Kemo is completely sealed off.  The only 
+possible exit is the coastline, which is sealed off by an armada of 
+battleships and gunboats.  Any material entering of leaving Kemo must go 
+through Kemo Security.  Wanderers and criminals outside project "Q" are 
+hunted down and returned by airship to their rightful place.  Outside walls 
+are strewn with mines and turrets. The prison city of Quarantine is 
+officially opened
+
+2035  After three years of tribal gang wars, a citizen's committee is 
+established to restore support systems such as electric power, proper food 
+distribution, water filtration and activation of the old street power grids 
+which support the thousands of unused hover vehicles which lay useless in the 
+streets.  The gang kingpins take notice and openly support and protect the 
+committee to have some of the comforts they are otherwise unable to acquire 
+(including driving cool cars!).
+
+2046  The quarantined Kemo city is doing fairly well, but unfortunately due 
+to the influx of new inmates, overcrowding is becoming a problem.  New Kemo's 
+OmniCorp raises public interest in the neurodrug "Hydergine 344" reported to 
+eliminate "criminal thoughts" in patients.
+
+2047  Hydergine 344 is introduced to Quarantine's water supply.  The water 
+supply has an abnormally high bacterial and viral content which reacts with 
+Hydergine 344 forming a pychoreactive virus.  The virus causes synaptic 
+breakdown, the main symptoms being violent psychopathic tendencies.  About 
+half of the prisoners have become crazed violent killer lunatics intent on 
+killing anyone who is not a crazed violent killer lunatic.  
+
+2048  The virus is spreading.
+
+
+
+HINT:  Buy the forward guns with a free UZI then look out of your side 
+view while driving. 
+
+
+The final version has loads of areas super detailed mission breifings and 
+loads more enemies & pedestrians and well.... the other 90% of the game!
+
+It will be out by September so start saving your Earth dollars. 
+
+Enjoy
+
+
+Credits:   
+
+Producer: 
+Gametek
+Rod Humble
+
+The Imagexcel Team:
+Greg Bick
+Andy Brownbill
+Kevin Hoare
+Ray Larabie
+Ed Zolnieryk
+
+Copyright(c) 1994 Gametek/Imagexcel all rights reserved.

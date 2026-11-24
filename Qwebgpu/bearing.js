@@ -6,3 +6,12 @@ export function bearing(dx,dy,table) {
   if (dx < 0) return dy < 0 ? 180+angle : 180-angle;
   return dy < 0 && angle ? 360-angle : angle;
 }
+
+export function sine(table, angle) {
+  const fullTurn = 5760, quarter = 1440;
+  const a = (angle % fullTurn + fullTurn) % fullTurn;
+  if (a <= quarter) return table[a];
+  if (a <= 2*quarter) return table[2*quarter-a];
+  if (a <= 3*quarter) return -table[a-2*quarter];
+  return -table[fullTurn-a];
+}

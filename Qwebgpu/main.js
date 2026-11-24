@@ -8,6 +8,7 @@ import { storyCrawl } from './intro.js';
 import { fliFrames } from './fli.js';
 import { playAvi } from './play-avi.js';
 import {effectsOutput} from './settings.js';
+import {runDemo, demoRequiredFiles} from './demo.js';
 
 const screen = document.querySelector('#screen');
 const launcher = document.querySelector('#launcher');
@@ -52,7 +53,7 @@ function updateFolderStatus() {
     return;
   }
   const choosingFolder = config.fileUpload && uploadMode;
-  const names = config.copyProtection ? [...required, 'COPY.IMG', 'COPYFONT.SPR', 'PW.ENC'] : required;
+  const names = config.demo ? demoRequiredFiles : config.developerMode ? ['SKIPIT.EXE','CLICKER.VOC','WAIT.IMG'] : config.copyProtection ? [...required, 'COPY.IMG', 'COPYFONT.SPR', 'PW.ENC'] : required;
   const missing = uploaded ? names.filter(name => !files.has(name)) : [];
   start.disabled = choosingFolder && (!uploaded || missing.length > 0);
   status.textContent = missing.length ? 'Missing from selected folder: ' + missing.join(', ') :
@@ -79,7 +80,11 @@ fetch(new URL('./config.json', import.meta.url), {cache: 'no-store'}).then(async
       typeof value.copyProtection !== 'boolean' || typeof value.fileUpload !== 'boolean') {
     throw new Error('config.json must contain boolean copyProtection and fileUpload settings.');
   }
-  config = value;
+  for (const key of ['developerMode','demo','shareware']) {
+    if (key in value && typeof value[key] !== 'boolean') throw new Error(key+' must be boolean.');
+  }
+  config = {developerMode:false,...value, demo:value.demo ?? value.shareware ?? false};
+  sourceDescription.textContent = 'Using the served '+(config.demo ? 'QDEMO' : 'MS-DOS')+' directory.';
   const choosingFolder = config.fileUpload && uploadMode;
   folderPicker.hidden = !choosingFolder;
   start.hidden = !choosingFolder;
@@ -97,7 +102,7 @@ function assetUrl(name) {
   if (!/^[a-zA-Z0-9._-]+$/.test(name) || name === '.' || name === '..') {
     throw new Error('Invalid game asset filename: ' + name);
   }
-  return new URL('./MS-DOS/' + encodeURIComponent(name), import.meta.url);
+  return new URL((config.demo ? './QDEMO/' : './MS-DOS/') + encodeURIComponent(name), import.meta.url);
 }
 
 async function getFile(name, optional = false) {
@@ -111,7 +116,7 @@ async function getFile(name, optional = false) {
   if (!pending) {
     pending = fetch(assetUrl(name)).then(async response => {
       if (response.status === 404) return null;
-      if (!response.ok) throw new Error('Unable to load MS-DOS/' + name + ' (HTTP ' + response.status + ').');
+      if (!response.ok) throw new Error('Unable to load ' + (config.demo ? 'QDEMO/' : 'MS-DOS/') + name + ' (HTTP ' + response.status + ').');
       const file = await response.blob();
       files.set(key, file);
       return file;
@@ -119,7 +124,7 @@ async function getFile(name, optional = false) {
     pendingFiles.set(key, pending);
   }
   const file = await pending;
-  if (!file && !optional) throw new Error('Missing from the served MS-DOS directory: ' + name);
+  if (!file && !optional) throw new Error('Missing from the served ' + (config.demo ? 'QDEMO' : 'MS-DOS') + ' directory: ' + name);
   return file;
 }
 
@@ -128,7 +133,7 @@ async function getAudioTrack(name) {
   const url = assetUrl(name);
   const response = await fetch(url, {method:'HEAD'});
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error('Unable to access MS-DOS/' + name + ' (HTTP ' + response.status + ').');
+  if (!response.ok) throw new Error('Unable to access ' + (config.demo ? 'QDEMO/' : 'MS-DOS/') + name + ' (HTTP ' + response.status + ').');
   return url.href;
 }
 
@@ -381,6 +386,21 @@ async function startGame() {
     document.addEventListener('click', unlockAudio, {capture:true,signal:audioEvents.signal});
     unlockAudio();
     display ??= await createDisplay(screen);
+    if (config.demo) {
+      await runDemo({screen, display, bytes, loadImage, launcher});
+      return;
+    }
+    if (config.developerMode) {
+      const tables = readPromptTables(await bytes('SKIPIT.EXE'));
+      const vga = indexedDisplay(display,tables.step);
+      const clickBuffer = readVoice(audio,await bytes('CLICKER.VOC'),'CLICKER.VOC');
+      launcher.hidden = true;
+      screen.hidden = false;
+      await runMainMenu({screen,display,vga,tables,bytes,loadImage,getFile,getAudioTrack,audio,
+        developerMode:true,click:() => audio.state === 'running' && sound(clickBuffer)});
+      status.textContent = 'Game ended.';
+      return;
+    }
     if (!sessionStorage.getItem(introPlayedKey) && await playWrapperMovie('BQUAR1DK.AVI')) {
       sessionStorage.setItem(introPlayedKey, '1');
     }

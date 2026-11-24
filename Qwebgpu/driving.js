@@ -1,7 +1,7 @@
 import {tickDistrictHazards} from './district-hazards.js';
-import {bearing} from './bearing.js';
+import {bearing,sine} from './bearing.js';
 import {projectedStreetContact,resolveStreetContact} from './street-contact.js';
-import {cabBody, chaseRange, rideHeight} from './cab-dimensions.js';
+import {cabBody, chaseRange, rideHeight, supportRadius} from './cab-dimensions.js';
 
 // DOS 0x1AD00 initializes the keyboard dynamics and 0x1AD98 integrates them.
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
@@ -13,13 +13,7 @@ const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
 const fallbackBounds = Object.freeze({left:-cabBody.width/2,right:cabBody.width/2,
   back:-cabBody.length/2,front:cabBody.length/2,top:cabBody.base-cabBody.height,bottom:cabBody.base});
-function sine(table, angle) {
-  const a = wrap(angle);
-  if (a <= quarter) return table[a];
-  if (a <= 2*quarter) return table[2*quarter-a];
-  if (a <= 3*quarter) return -table[a-2*quarter];
-  return -table[fullTurn-a];
-}
+
 
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
@@ -188,67 +182,26 @@ function firstWallHit(district,x,y,dx,dy,zTop,zBottom) {
   return hit;
 }
 
-function sweepCab(car,district,dx,dy,oldAngle,newAngle) {
-  let first = null;
-  const bounds = district.taxiBounds ?? fallbackBounds;
-  const a = oldAngle*Math.PI/2880, b = newAngle*Math.PI/2880;
-  const sa = Math.sin(a), ca = Math.cos(a), sb = Math.sin(b), cb = Math.cos(b);
-  function probe(right,forward) {
-    const px = -ca*right+sa*forward, py = sa*right+ca*forward;
-    const vx = dx-cb*right+sb*forward-px;
-    const vy = dy+sb*right+cb*forward-py;
-    const hit = firstWallHit(district,car.x+px,car.y+py,vx,vy,car.z+bounds.top,car.z+bounds.bottom);
-    if (hit && (!first || hit.t < first.t)) first = hit;
+// 0x2620A..0x26392 projects five endpoints from the proposed position
+// along travel. The previous endpoints initially coincide at the spawn.
+function sweepCab(car,district,dx,dy) {
+  if (!dx && !dy) return null;
+  const table = district.start.sine;
+  const travel = district.start.mapDisplay?.bearings ?
+    16*bearing(dy,dx,district.start.mapDisplay.bearings) :
+    Math.round(Math.atan2(dx,dy)*2880/Math.PI);
+  const endpoints = [];
+  for (const offset of [-400,400,-208,208,0]) {
+    const heading = travel+offset;
+    const x = Math.floor(car.x+dx)+(120*sine(table,heading)>>11);
+    const y = Math.floor(car.y+dy)+(120*sine(table,heading+quarter)>>11);
+    const [px,py] = car.wallProbes?.[endpoints.length] ?? [Math.floor(car.x),Math.floor(car.y)];
+    const hit = firstWallHit(district,px,py,x-px,y-py,car.z,car.z);
+    if (hit) return hit;
+    endpoints.push([x,y]);
   }
-  for (const [r0,f0,r1,f1] of [
-    [bounds.left,bounds.back,bounds.right,bounds.back],
-    [bounds.right,bounds.back,bounds.right,bounds.front],
-    [bounds.right,bounds.front,bounds.left,bounds.front],
-    [bounds.left,bounds.front,bounds.left,bounds.back],
-  ]) {
-    const count = Math.ceil(Math.hypot(r1-r0,f1-f0)/4);
-    for (let i=0; i<count; i++) {
-      const t = i/count;
-      probe(r0+(r1-r0)*t,f0+(f1-f0)*t);
-    }
-  }
-  // A short wall can enter between perimeter probes. Sweep its endpoints in
-  // cab-local space as well, so finite wall ends cannot slip through the body.
-  const radius = Math.hypot(Math.max(-bounds.left,bounds.right),Math.max(-bounds.back,bounds.front));
-  const left = Math.max(0,Math.floor((Math.min(car.x,car.x+dx)-radius)/512)-1);
-  const right = Math.min(district.width-1,Math.floor((Math.max(car.x,car.x+dx)+radius)/512)+1);
-  const top = Math.max(0,Math.floor((Math.min(car.y,car.y+dy)-radius)/512)-1);
-  const bottom = Math.min(district.height-1,Math.floor((Math.max(car.y,car.y+dy)+radius)/512)+1);
-  for (let cy=top; cy<=bottom; cy++) for (let cx=left; cx<=right; cx++) {
-    const tile = district.tiles[cy*district.width+cx];
-    if (!(tile&127)) continue;
-    const id = (tile&127)*4+((tile>>>8)&3);
-    for (let at=district.wallOffsets[id]; at<district.wallOffsets[id+1]; at+=6) {
-      const walls = district.walls, wx = walls[at+2], wy = walls[at+3];
-      if (car.z+bounds.bottom <= walls[at+4] || car.z+bounds.top >= walls[at+5]) continue;
-      for (const end of [0,1]) {
-        const x = cx*512+walls[at]+end*wx-car.x, y = cy*512+walls[at+1]+end*wy-car.y;
-        const p = [-ca*x+sa*y,sa*x+ca*y];
-        const q = [-cb*(x-dx)+sb*(y-dy),sb*(x-dx)+cb*(y-dy)];
-        const vx = dx-cb*p[0]+sb*p[1]-x, vy = dy+sb*p[0]+cb*p[1]-y;
-        if (vx*wy-vy*wx > 0 && !(district.wallSides[at/6]&2)) continue;
-        if (p[0] >= bounds.left && p[0] <= bounds.right && p[1] >= bounds.back && p[1] <= bounds.front) continue;
-        let enter = 0, exit = 1;
-        for (const [start,finish,min,max] of [[p[0],q[0],bounds.left,bounds.right],[p[1],q[1],bounds.back,bounds.front]]) {
-          const d = finish-start;
-          if (!d) { if (start < min || start > max) exit = -1; continue; }
-          const t0 = (min-start)/d, t1 = (max-start)/d;
-          enter = Math.max(enter,Math.min(t0,t1));
-          exit = Math.min(exit,Math.max(t0,t1));
-        }
-        if (enter <= exit && enter <= 1 && (!first || enter < first.t)) {
-          const length = Math.hypot(wx,wy);
-          first = {t:enter,nx:-wy/length,ny:wx/length};
-        }
-      }
-    }
-  }
-  return first;
+  car.wallProbes = endpoints;
+  return null;
 }
 
 // 0x41484 tests the first and third BLK vertices as inclusive local bounds.
@@ -264,20 +217,19 @@ function floorBelow(district,x,y,z) {
   return floor === 32000 ? 0 : floor;
 }
 
-function ceilingBetween(district,x,y,top,nextTop) {
+function ceilingAbove(district,x,y,z) {
   const cx = x>>9, cy = y>>9;
   if (cx < 0 || cy < 0 || cx >= district.width || cy >= district.height) return null;
   const localX = x&511, localY = y&511;
   let ceiling = null;
-  for (const [x0,y0,x1,y1,height] of district.ceilings[district.tiles[cy*district.width+cx]&127]) {
+  for (const [x0,y0,x1,y1,height] of district.ceilings?.[district.tiles[cy*district.width+cx]&127] ?? []) {
     if (localX >= x0 && localX <= x1 && localY >= y0 && localY <= y1 &&
-        height <= top && height >= nextTop && (ceiling === null || height > ceiling)) ceiling = height;
+        height-40 <= z && (ceiling === null || height-40 > ceiling)) ceiling = height-40;
   }
   return ceiling;
 }
 
 function followFloor(car,district) {
-  const bounds = district.taxiBounds ?? fallbackBounds;
   // 0x317A1 uses the cab origin for these lift tiles, even with an active hover.
   const block = district.tiles[(car.y>>9)*district.width+(car.x>>9)] & 127;
   const level = district.start.district;
@@ -292,32 +244,25 @@ function followFloor(car,district) {
       return;
     }
   }
-  const angle = car.angle*Math.PI/2880, sin = Math.sin(angle), cos = Math.cos(angle);
   let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
-  for (const [right,forward] of [[bounds.left,bounds.back],[bounds.right,bounds.back],
-    [bounds.left,bounds.front],[bounds.right,bounds.front]]) {
-    const x = Math.trunc(car.x-cos*right+sin*forward);
-    const y = Math.trunc(car.y+sin*right+cos*forward);
+  for (const offset of [-400,400,2480,3280]) {
+    const heading = car.angle+offset;
+    const x = Math.trunc(car.x)+(supportRadius*sine(district.start.sine,heading)>>11);
+    const y = Math.trunc(car.y)+(supportRadius*sine(district.start.sine,heading+quarter)>>11);
     const height = floorBelow(district,x,y,car.z)-rideHeight;
     support = Math.min(support,height < car.supportZ-20 ? car.supportZ : height);
   }
   car.supportZ = support;
   if (car.hover < 0) {
-    const nextZ = car.z-(car.fallSpeed >> 6);
-    let ceiling = ceilingBetween(district,car.x,car.y,car.z+bounds.top,nextZ+bounds.top);
-    for (const [right,forward] of [[bounds.left,bounds.back],[bounds.right,bounds.back],
-      [bounds.left,bounds.front],[bounds.right,bounds.front]]) {
-      const x = Math.trunc(car.x-cos*right+sin*forward);
-      const y = Math.trunc(car.y+sin*right+cos*forward);
-      const height = ceilingBetween(district,x,y,car.z+bounds.top,nextZ+bounds.top);
-      if (height !== null && (ceiling === null || height > ceiling)) ceiling = height;
-    }
-    if (ceiling !== null) {
-      car.z = ceiling-bounds.top;
+    // 0x4168C uses 4*rawZ-20 for a reversed floor, 40 units above
+    // the BLK render plane. 0x31B27 compares that value at the cab origin.
+    const ceiling = ceilingAbove(district,car.x,car.y,car.z);
+    if (ceiling !== null && ceiling !== 0 && car.z-ceiling < 50) {
       car.fallSpeed = 0;
       car.hover = 1;
       return;
     }
+    const nextZ = car.z-(car.fallSpeed >> 6);
     car.z = nextZ;
     car.fallSpeed -= 192;
     if (car.fallSpeed < 0) {
@@ -440,16 +385,13 @@ function moveCab(car, district, keys) {
   car.velocity = step.velocity;
   const {dx,dy} = step;
   if (!dx && !dy && !rotation) return 0;
-  const hit = sweepCab(car,district,dx,dy,oldAngle,newAngle);
+  const hit = sweepCab(car,district,dx,dy);
   if (!hit) {
     car.x += dx; car.y += dy; car.angle = newAngle;
     return 0;
   }
-  const bounds = district.taxiBounds ?? fallbackBounds;
-  const radius = Math.hypot(Math.max(-bounds.left,bounds.right),Math.max(-bounds.back,bounds.front));
-  const advance = Math.max(0,hit.t-0.1/Math.max(0.1,Math.hypot(dx,dy)+radius*Math.abs(rotation)*Math.PI/2880));
-  car.x += dx*advance; car.y += dy*advance;
-  car.angle = wrap(oldAngle+Math.trunc(rotation*advance));
+  // A probe can swing across the cab on a reversal. Its contact fraction
+  // is not a fraction of cab translation. Keep the last accepted origin.
   const dot = dx*hit.nx+dy*hit.ny;
   // The impact cone excludes both 45-degree endpoints (0x26435).
   const alongWall = dx*hit.ny-dy*hit.nx;
@@ -468,9 +410,9 @@ function moveCab(car, district, keys) {
     car.speed = car.velocity*256;
     car.skidMode = false;
   } else {
-    const tx = (dx-dot*hit.nx)*(1-advance), ty = (dy-dot*hit.ny)*(1-advance);
+    const tx = (dx-dot*hit.nx), ty = (dy-dot*hit.ny);
     const slideAngle = wrap(car.angle+80*Math.sign(dot*alongWall));
-    if (!sweepCab(car,district,tx,ty,car.angle,slideAngle)) {
+    if (!sweepCab(car,district,tx,ty)) {
       car.x += tx; car.y += ty; car.angle = slideAngle;
     }
   }
@@ -482,11 +424,7 @@ export function cameraPose(car, district) {
     car.angle*Math.PI/2880+car.lookYaw;
   const fx = Math.sin(angle), fy = Math.cos(angle);
   if (!car.camera) {
-    const [right,forward,down] = district.taxiEye ?? [0,0,0];
-    // The seat rotates with the body. Looking through a door pivots at the driver's eye.
-    const heading = car.angle*Math.PI/2880, x = Math.sin(heading), y = Math.cos(heading);
-    return {x:car.x-y*right+x*forward,y:car.y+x*right+y*forward,z:car.z+down+car.seatOffset,
-      fx,fy,angle,pitch:car.lookPitch};
+    return {x:car.x,y:car.y,z:car.z+car.seatOffset,fx,fy,angle,pitch:car.lookPitch};
   }
   const floorLook = car.chaseFloorLook ?? 0;
   const distance = chaseRange.near+(car.chaseDistance-chaseRange.near)*Math.exp(-2*floorLook);

@@ -46,6 +46,12 @@ export function readPromptTables(bytes) {
       offsets:Array.from({length:20},(_,i) => [view.getInt16(base+0x6064+4*i,true),view.getInt16(base+0x6066+4*i,true)]),
       lanes:Array.from({length:6},(_,i) => [view.getInt16(base+0x614c+4*i,true),view.getInt16(base+0x614e+4*i,true)]),
       random:bytes.slice(base+0xaa7e,base+0xab7e),
+      launcherBlocks:Array.from({length:5},(_,i) => view.getInt16(base+0x60f2+20*district+2*i,true)),
+      launchPorts:Array.from({length:10},(_,i) => [0,2,4].map(k => view.getInt16(base+0xc688+6*i+k,true))),
+      missileViews:Array.from({length:9},(_,i) => {
+        const descriptor = base+view.getUint32(base+0x63e8+4*i,true);
+        return [view.getUint8(descriptor+4),view.getInt8(descriptor+5),view.getInt8(descriptor+6)];
+      }),
       gunBlocks:Array.from({length:4},(_,i) => view.getInt16(base+0x60e8+20*district+2*i,true)),
       sweeps:Array.from({length:4},(_,row) => Array.from({length:17},(_,i) =>
         view.getInt16(base+0xc580+2*(17*row+i),true))),

@@ -34,12 +34,24 @@ challenge; it is disabled by default. When enabled, `COPY.IMG`, `COPYFONT.SPR`
 and `PW.ENC` are required in the selected game folder. This setting does not
 modify the DOS executable or its disassembly.
 
+Set `"demo": true` to use the shareware files from `Qwebgpu/QDEMO`
+(linked to `DEMO/`); `"demo": false` retains the retail SKIPIT path.
+Demo mode currently displays `QTITLE.GIF` and an explorable preview of the
+four demo Core map overlays. Press a key or tap to open the map, use the
+arrow keys to pan, and press Escape or tap to return to the title. This
+preview is a development aid, not the original demo menu: driving, fares,
+weapons, and the original demo startup flow are not yet ported.
+It does not use a DOS emulator, retail assets, or DOS4GW.
+The demo path ignores `developerMode` and `copyProtection`; those settings
+continue to apply to retail. `demo` takes precedence over the earlier
+`shareware` setting when both are present.
+
 Set `"fileUpload": true` and reload to show a **Select game folder** link.
 The link opens the optional folder picker. A selected folder replaces the
 served files for that session. Choose **Use served files** to return. The
 upload option is disabled by default.
 
-The web server must follow the symlink and serve files from `MS-DOS`. Anyone
+The web server must follow the symlink for the chosen `MS-DOS` or `QDEMO` directory. Anyone
 who can reach the server can request files from that directory, including
 save files; bind it to a trusted interface or restrict access. With folder
 selection enabled, the browser reads the selected files through its local
@@ -106,12 +118,11 @@ The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 1920×1080 and 2560×1440 when they fit the display. Gameplay defaults to the
 display's native pixel dimensions, subject to the device's texture limit.
 Open Settings with tilde to set horizontal FOV from 60° to 120° in one-degree
-steps. The default is 110° in cockpit and chase. The zoom wheel controls the
+steps. The default is the retail projection (about 64°) in cockpit and chase. The zoom wheel controls the
 chase boom independently. It shortens when it crosses a wall or deck, but
 ignores geometry entirely above the cab so overhead gantries do not pull it in.
 At minimum zoom it sits just above the modeled cab bottom; at maximum zoom
-its boom reaches 260 units and twice the former ground-relative height when
-unobstructed.
+its unobstructed boom reaches 600 world units.
 
 Settings also offers xBR-style texture upscaling from 2× to 4×, FXAA and
 texture contrast-adaptive sharpening. Each starts off and is saved separately.
@@ -125,14 +136,13 @@ one second. Static menus may show zero; it is not a GPU completion or display
 refresh measurement. Gameplay targets 60 FPS, but the counter does not
 guarantee that the GPU or display presents every submitted frame.
 
-The cockpit pivots above and behind the GLB's steering wheel. The renderer
-uniformly fits the lowest tyre and the modeled eye to SKIPIT's 20-unit
-road-to-eye distance. This makes the taxi about 27 world units high. The Core's
-57.75- and 77-unit stop signs use their original placement scales. Chase orbits
-the fitted model's vertical center. Driving sweeps the fitted model's oriented
-body bounds against wall runs and uses its footprint for floor support, rather
-than SKIPIT's 120-unit wall probes. This is a deliberate model-specific override,
-not per-triangle collision.
+The street camera uses the simulated cab origin and seat displacement. The HD
+cockpit is positioned around that eye. The exterior model retains its proportions
+and fits the longitudinal span between the original front and rear floor
+samples. Including the roof sign, the supplied GLB then measures 181.26 long,
+68.29 wide and 61.65 high in world units. SKIPIT provides no exterior mesh dimensions.
+Chase orbits the fitted model's vertical center. Wall contact uses five
+120-unit probes. Floor support uses the center and four 100-unit probes.
 The two white beams originate at the front faces of the GLB headlamp lenses and
 follow the cab heading in either view. They illuminate indexed roads, walls and
 placed sprites. The lenses and their depth-tested halos are visible from the front.
@@ -209,19 +219,22 @@ does not yet reproduce all the game-state events that can affect them, and
 its fixed 35 Hz step replaces the original measured divisor. Handling,
 including impacts, terrain effects and hover landing interactions,
 is therefore not established as 1:1.
-Hover ascent now stops at reverse-facing overhead floors using the modeled cab
-footprint. SKIPIT instead queries the player position with a 50-unit clearance;
+Hover ascent samples reverse-facing overhead floors at the cab center using
+the original 50-unit clearance. On touchdown,
 the browser applies the retail landing displacement sequence to the driver’s eye. Other vertical effects and their event triggers remain incomplete.
 
 The district actor scanner now activates mine-family MAP markers and the four
-directional wall-gun blocks in KCITY. Mines use the retail XY and Z overlap,
+directional wall-gun blocks and five missile-launcher block types in KCITY. Mines use the retail XY and Z overlap,
 district damage word, jump impulse, blast frames and pair of explosion cues.
 Unarmoured cab health starts at 400 and is visible in the console. Directional
-guns fire ETRACERS sprites on their sweep and burst schedule. The browser uses
+guns fire ETRACERS sprites on their sweep and burst schedule. Qwebgpu applies
+10 hull damage per wall-tracer hit as a gameplay choice. Missile walls
+alternate their two retail firing positions and headings, play FIREBELC.VOC,
+and use directional EMISSILE sprites. A head-on missile impact follows the cab for its twelve blast frames. KCITY missiles deal 70 unarmoured damage. The browser uses
 its existing wall sweep for projectile obstruction. The complete damage, death,
 shared actor scheduling and other weapon paths remain open.
 
-Chase cameras can see floor-textured caps over the backs of rectangular
+Chase cameras can see caps tiled with unmarked road asphalt over the backs of rectangular
 facades and adjoining enclosed empty cells. These surfaces live in the world
 mesh only. The hover light is evaluated on the receiving floor.
 

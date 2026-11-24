@@ -1,0 +1,88 @@
+;
+; game data for quarantine
+;             *******important********
+;       commas signify next entry is data
+;       avoid using commas anywhere else
+;       DON'T USE COLONS EITHER!(sorry for shouting)
+;             ************************
+;
+
+,100                  ; Starting money
+,20                      ; Current fare rate
+
+
+,54                      ; # of Normal Fares
+,19                      ; # of Special Missions
+,80                      ; % chance of a mission
+
+
+;
+; weapons data structure
+;  entry 1 = weapon cost
+;        2 = damage per hit
+;        3 = ammocount max
+;        4 = price of ammo per unit
+;  All of imagexecl are down the pub. (Again)
+
+,250,3,600,1             ; small roof cannon
+,400,5,200,1             ; punisher roof cannon
+,1000,0,5,100            ; shocker
+,1000,10,50,2           ; shot gun cannon
+,0,0,0,0                 ; unused
+
+,400,10,50,15           ; arching fire ball
+,500,3,900,1             ; flame thrower
+,1000,0,10,200           ; can man - overhead explosion - kills all
+,500,1,50,100            ; r-type build up weapon -
+,0,0,0,0
+
+,350,10,20,20             ; generic missile
+,500,10,10,50             ; street smart homer
+,600,10,10,30             ; bomber missile
+,500,10,25,20             ; pure homer - no street smarts
+,0,0,0,0
+
+,300,10,20,5             ; generic mine
+,1000,0,10,50             ; plasma ball mine - kills all
+,1000,10,30,50           ; rear jacks
+,1000,20,25,50           ; smart wheel mine
+,0,0,0,0
+
+,300,0,3,20              ; bumper exp - destroys
+,1000,3,100,10            ; skill saw
+,0,0,0,0
+,0,0,0,0
+,0,0,0,0
+
+,200,1,250,10            ; small front guns - price = 10 per 1$
+,400,2,300,5             ; small front guns with uzi  5 per 1$
+,600,3,350,5             ; larger caliber bullets
+,0,0,0,0
+,0,0,0,0
+
+;
+; other car characteristics
+;  entry 1 = item cost cost
+;        2 = unused
+;        3 = max count
+;        4 = price per unit
+;
+
+,0,0,0,10                ; repairs $10 per 1%
+,0,0,0,0
+,0,0,0,0
+
+,250,0,20,0              ; battery 1
+,500,0,30,0              ; battery 2
+,1000,0,60,100           ; nicad
+
+,1000,0,100,0            ; armour 1
+,3000,0,200,0            ; armour 2
+,5000,0,400,0            ; armour 3
+
+,100,0,3,100               ; nitro 1
+,0,0,0,0                 ;
+,0,0,0,0                 ;
+
+:
+ 

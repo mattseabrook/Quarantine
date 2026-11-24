@@ -19,7 +19,7 @@ fn cabDirection(local:vec3f) -> vec3f {
                       @location(2) uv:vec2f, @location(3) tangent:vec4f,
                       @location(4) metalUV:vec2f, @location(5) normalUV:vec2f) -> TaxiVertex {
   let offset = cabDirection(point);
-  let d = (view.player.xyz-view.eye.xyz)+offset;
+  let d = (view.player.xyz-view.eye.xyz)+offset-cabDirection(view.cabSeat.xyz);
   let along = dot(d.xy,view.axes.xy);
   let depth = along*view.axes.z+d.z*view.axes.w;
   let screen = vec2f(dot(d.xy,vec2f(-view.axes.y,view.axes.x)),along*view.axes.w-d.z*view.axes.z);
@@ -123,7 +123,7 @@ fn taxiTexel(p:vec2i,fallback:vec3f) -> vec3f {
     baseColor = clamp(baseColor+textureSharpen(original.rgb,n,s,w,e,sharpness)-original.rgb,vec3f(0),vec3f(1));
   }
   if (finish.lamp.w > 1.5) {
-    if (dot(p.normal,view.eye.xyz-p.world) <= 0.0) {
+    if (dot(p.normal,view.eye.xyz+cabDirection(view.cabSeat.xyz)-p.world) <= 0.0) {
       return vec4f(vec3f(0.012,0.012,0.014)*view.settings.x,1.0);
     }
     let dimensions = vec2i(textureDimensions(wayfinder));
@@ -147,7 +147,7 @@ fn taxiTexel(p:vec2i,fallback:vec3f) -> vec3f {
   let base = vec4f(baseColor,original.a)*finish.base;
   let rough = select(clamp(mr.g*finish.surface.y,0.045,1.0),0.10,finish.lamp.z > 0.0);
   let metal = select(clamp(mr.b*finish.surface.x,0.0,1.0),1.0,finish.lamp.z > 0.0);
-  let eye = normalize(view.eye.xyz-p.world);
+  let eye = normalize(view.eye.xyz+cabDirection(view.cabSeat.xyz)-p.world);
   var n = normalize(p.normal);
   if (abs(p.tangent.w)>0.5) {
     let t = normalize(p.tangent.xyz-n*dot(p.tangent.xyz,n));

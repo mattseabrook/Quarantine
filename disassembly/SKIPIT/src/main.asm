@@ -234,16 +234,16 @@ bits 32
 %include "src/functions/unresolved/00025240_fun_00025240.asm"
 %include "src/functions/runtime/scan_district_block_actor.asm"
 %include "src/functions/runtime/allocate_map_marker_actor.asm"
-%include "src/functions/unresolved/000254e0_fun_000254e0.asm"
+%include "src/functions/runtime/acquire_free_district_actor.asm"
 %include "src/functions/runtime/select_actor_scan_cell.asm"
 %include "src/functions/runtime/actor_outside_activation_range.asm"
 %include "src/functions/runtime/place_actor_in_road_lane.asm"
 %include "src/functions/unresolved/000257cc_fun_000257cc.asm"
-%include "src/functions/unresolved/00025828_fun_00025828.asm"
+%include "src/functions/runtime/spawn_actor_on_district_trigger_tile.asm"
 %include "src/functions/unresolved/000259ac_fun_000259ac.asm"
 %include "src/functions/unresolved/00025a3c_fun_00025a3c.asm"
 %include "src/functions/unresolved/00025cd0_fun_00025cd0.asm"
-%include "src/functions/unresolved/00025d10_fun_00025d10.asm"
+%include "src/functions/runtime/initialize_player_wall_probes.asm"
 %include "src/functions/unresolved/00025d7c_fun_00025d7c.asm"
 %include "src/functions/runtime/resolve_player_sprite_contact.asm"
 %include "src/functions/runtime/resolve_player_wall_contact.asm"
@@ -253,7 +253,7 @@ bits 32
 %include "src/functions/unresolved/000267ac_fun_000267ac.asm"
 %include "src/functions/unresolved/00026854_fun_00026854.asm"
 %include "src/functions/unresolved/000268d0_fun_000268d0.asm"
-%include "src/functions/unresolved/0002694c_fun_0002694c.asm"
+%include "src/functions/runtime/projectile_overlaps_cab.asm"
 %include "src/functions/unresolved/000269c8_fun_000269c8.asm"
 %include "src/functions/unresolved/00026adc_fun_00026adc.asm"
 %include "src/functions/unresolved/00026b58_fun_00026b58.asm"
@@ -269,7 +269,7 @@ bits 32
 %include "src/functions/unresolved/00028250_fun_00028250.asm"
 %include "src/functions/unresolved/000285e0_fun_000285e0.asm"
 %include "src/functions/unresolved/000288bc_fun_000288bc.asm"
-%include "src/functions/unresolved/00028bf0_fun_00028bf0.asm"
+%include "src/functions/runtime/queue_directional_projectile_sprite.asm"
 %include "src/functions/unresolved/00028d40_fun_00028d40.asm"
 %include "src/functions/unresolved/00029044_fun_00029044.asm"
 %include "src/functions/unresolved/000292b4_fun_000292b4.asm"
@@ -340,7 +340,7 @@ bits 32
 %include "src/functions/unresolved/0002d99c_fun_0002d99c.asm"
 %include "src/functions/unresolved/0002da48_fun_0002da48.asm"
 %include "src/functions/unresolved/0002dc4c_fun_0002dc4c.asm"
-%include "src/functions/unresolved/0002dd18_fun_0002dd18.asm"
+%include "src/functions/runtime/resolve_projectile_obstruction.asm"
 %include "src/functions/unresolved/0002de50_fun_0002de50.asm"
 %include "src/functions/unresolved/0002dea0_fun_0002dea0.asm"
 %include "src/functions/unresolved/0002df1c_fun_0002df1c.asm"
@@ -693,7 +693,7 @@ bits 32
 %include "src/functions/unresolved/0004ebfc_fun_0004ebfc.asm"
 %include "src/functions/unresolved/0004ec6c_fun_0004ec6c.asm"
 %include "src/functions/unresolved/0004ef90_fun_0004ef90.asm"
-%include "src/functions/unresolved/0004f3b4_fun_0004f3b4.asm"
+%include "src/functions/runtime/initialize_wall_missile_launcher.asm"
 %include "src/functions/unresolved/0004f46c_fun_0004f46c.asm"
 %include "src/functions/resource_io/load_district_bay_records.asm"
 %include "src/functions/unresolved/0004f6a8_fun_0004f6a8.asm"
@@ -4408,7 +4408,7 @@ emit_data_0219_0003fade
 %if ($ - $$) != 0x154E0
     %error "layout drift at raw 0003FAE0"
 %endif
-emit_function_000254e0_part_00
+emit_acquire_free_district_actor_part_00
 
 ; raw 0003FB47..0003FB90 (explicit data)
 %if ($ - $$) != 0x15547
@@ -4462,7 +4462,7 @@ emit_data_0223_0003fe25
 %if ($ - $$) != 0x15828
     %error "layout drift at raw 0003FE28"
 %endif
-emit_function_00025828_part_00
+emit_spawn_actor_on_district_trigger_tile_part_00
 
 ; raw 0003FFAB..0003FFAC (explicit data)
 %if ($ - $$) != 0x159AB
@@ -4504,7 +4504,7 @@ emit_function_00025cd0_part_00
 %if ($ - $$) != 0x15D10
     %error "layout drift at raw 00040310"
 %endif
-emit_function_00025d10_part_00
+emit_initialize_player_wall_probes_part_00
 
 ; raw 00040379..0004037C (explicit data)
 %if ($ - $$) != 0x15D79
@@ -4618,7 +4618,7 @@ emit_data_0235_00040f0d
 %if ($ - $$) != 0x1694C
     %error "layout drift at raw 00040F4C"
 %endif
-emit_function_0002694c_part_00
+emit_projectile_overlaps_cab_part_00
 
 ; raw 00040FC5..00040FC8 (explicit data)
 %if ($ - $$) != 0x169C5
@@ -4804,7 +4804,7 @@ emit_data_0250_00043027
 %if ($ - $$) != 0x18BF0
     %error "layout drift at raw 000431F0"
 %endif
-emit_function_00028bf0_part_00
+emit_queue_directional_projectile_sprite_part_00
 
 ; raw 00043321..00043340 (explicit data)
 %if ($ - $$) != 0x18D21
@@ -5572,7 +5572,7 @@ emit_data_0307_00048299
 %if ($ - $$) != 0x1DD18
     %error "layout drift at raw 00048318"
 %endif
-emit_function_0002dd18_part_00
+emit_resolve_projectile_obstruction_part_00
 
 ; raw 000483DA..00048450 (explicit data)
 %if ($ - $$) != 0x1DDDA
@@ -9268,7 +9268,7 @@ emit_data_0571_0006967c
 %if ($ - $$) != 0x3F3B4
     %error "layout drift at raw 000699B4"
 %endif
-emit_function_0004f3b4_part_00
+emit_initialize_wall_missile_launcher_part_00
 
 ; raw 00069A6B..00069A6C (explicit data)
 %if ($ - $$) != 0x3F46B

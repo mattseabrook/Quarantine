@@ -1,4 +1,22 @@
-import {bearing} from './bearing.js';
+import {bearing,sine} from './bearing.js';
+
+// Qwebgpu gameplay choice for a wall tracer that reaches the cab.
+const wallTracerDamage = 10;
+
+// SKIPIT 0x25CD0 has asymmetric boundaries around the south sector.
+function cardinal(angle) {
+  if (angle>=2160 && angle<=3440) return 2;
+  if (angle>=720 && angle<2160) return 1;
+  if (angle>3440 && angle<=5040) return 3;
+  return 0;
+}
+
+// 0x3E4D8 repositions the blast every update, including while the cab turns.
+function placeFrontImpact(shot,car,table) {
+  shot.x = Math.trunc(car.x)+(64*sine(table,car.angle)>>11);
+  shot.y = Math.trunc(car.y)+(64*sine(table,car.angle+1440)>>11);
+  shot.z = Math.trunc(car.z)+8;
+}
 
 // SKIPIT 0x25240 advances a five-phase scanner. The perimeter scan at phase
 // zero shares its column cursor with the two MAP-marker scans.
@@ -7,6 +25,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
   if (!tables) return;
   const state = car.hazards, cx = car.x>>9, cy = car.y>>9;
   car.mineSound = null;
+  car.launchSound = false;
   function randomBit() {
     state.randomIndex = (state.randomIndex+1)&255;
     return tables.random[state.randomIndex]&1;
@@ -15,9 +34,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
   if ([0,1,4].includes(state.phase)) {
     const column = tables.columns[state.column];
     state.column = (state.column+1)%tables.columns.length;
-    const a = car.angle;
-    const facing = a >= 2160 && a <= 3440 ? 2 : a >= 720 && a < 2160 ? 1 :
-      a > 3440 && a <= 5040 ? 3 : 0;
+    const facing = cardinal(car.angle);
     const [dx,dy] = tables.offsets[5*facing+column];
     const x = cx+dx, y = cy+dy, cell = y*district.width+x;
     if (x>=0 && y>=0 && x<district.width && y<district.height) {
@@ -25,6 +42,10 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
       const space = state.mines.size+state.guns.size<20 && !state.mines.has(cell) &&
         !state.guns.has(cell) && !(tile&128);
       const slot = tables.gunBlocks.indexOf(tile&127);
+      const launcher = tables.launcherBlocks.indexOf(tile&127);
+      if (space && !state.phase && launcher>=0) {
+        state.guns.set(cell,{x:x*512,y:y*512,launcher,port:0,cooldown:4});
+      }
       if (space && !state.phase && slot>=0) {
         const [ox,oy,heading] = [[32,256,90],[480,256,270],[256,32,0],[256,480,180]][slot];
         state.guns.set(cell,{x:x*512+ox,y:y*512+oy,heading,step:0,timer:0,burst:0,cooldown:0,
@@ -36,6 +57,20 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
         const selector = tables.mineSelectors[marker-1];
         const [ox,oy] = selector ? tables.lanes[2*lane+selector-1] : [256,256];
         state.mines.set(cell,{x:x*512+ox,y:y*512+oy,frame:-1,haloFirst:0,haloCount:0});
+      }
+    }
+  }
+  // A cab can enter a corner sideways without ever pointing the five-cell
+  // forward probe at it. Catch up adjacent retail launcher tiles on phase zero.
+  if (!state.phase) {
+    for (let y=Math.max(0,cy-1); y<=Math.min(district.height-1,cy+1); y++) {
+      for (let x=Math.max(0,cx-1); x<=Math.min(district.width-1,cx+1); x++) {
+        const cell = y*district.width+x, tile = district.tiles[cell];
+        const launcher = tables.launcherBlocks.indexOf(tile&127);
+        if (launcher>=0 && !(tile&128) && !state.guns.has(cell) && !state.mines.has(cell) &&
+            state.guns.size+state.mines.size<20) {
+          state.guns.set(cell,{x:x*512,y:y*512,launcher,port:0,cooldown:4});
+        }
       }
     }
   }
@@ -60,6 +95,24 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
       state.guns.delete(cell);
       continue;
     }
+    // 0x4F1FC alternates two wall ports. Slot four has a longer reload.
+    if (gun.launcher!==undefined) {
+      if (gun.cooldown<0) {
+        const [ox,oy,heading] = tables.launchPorts[2*gun.launcher+gun.port];
+        const origin = {x:gun.x+ox,y:gun.y+oy,z:-16,haloFirst:0,haloCount:0};
+        if (state.shots.size<20) {
+          const speed = distance(64);
+          state.shots.add({...origin,missile:true,heading,life:100,
+            dx:[0,1,0,-1][heading/90]*speed,dy:[1,0,-1,0][heading/90]*speed});
+          gun.port ^= 1;
+          car.launchSound = true;
+        }
+        if (state.shots.size<20) state.shots.add({...origin,blast:-1,flash:true});
+        gun.cooldown = duration(gun.launcher===4 ? 90 : 45);
+      }
+      gun.cooldown--;
+      continue;
+    }
     gun.cooldown = Math.max(0,gun.cooldown-1);
     if (!gun.burst) {
       if (++gun.timer>=duration(1)) { gun.timer=0; gun.step++; }
@@ -78,21 +131,44 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
     if (--gun.burst===0) { gun.step=0; gun.cycles=2; }
   }
   for (const shot of state.shots) {
-    if (--shot.life<0) { state.shots.delete(shot); continue; }
-    if (Math.abs(shot.x-car.x)<48 && Math.abs(shot.y-car.y)<48) {
-      state.shots.delete(shot);
-      // 0x4DB6F requests displacement pattern one on a cab hit.
-      if (!car.landingStep) { car.landingStep=1; car.seatEffect='shotOffsets'; }
+    if (shot.blast!==undefined) {
+      if (shot.frontImpact) placeFrontImpact(shot,car,district.start.sine);
+      if (++shot.blast>=12) state.shots.delete(shot);
       continue;
     }
-    if (shot.life<27 && wallHit(district,shot.x,shot.y,shot.dx,shot.dy,-16,-16)) {
-      state.shots.delete(shot);
+    const expired = --shot.life<0;
+    if (shot.missile && !expired) shot.z = Math.min(0,shot.z+4);
+    const height = shot.z ?? -16;
+    // 0x2694C checks an absolute projectile height and strict XY bounds.
+    // Tracers test the cab before wall obstruction. Missiles reverse that order.
+    const cabHit = height>=-25 && Math.abs(shot.x-Math.trunc(car.x))<48 &&
+      Math.abs(shot.y-Math.trunc(car.y))<48;
+    const wall = !expired && (shot.missile || (!cabHit && shot.life<27)) &&
+      wallHit(district,shot.x,shot.y,shot.dx,shot.dy,height,height);
+    if (expired || wall || cabHit) {
+      if (shot.missile) {
+        if (wall) { shot.x += wall.t*shot.dx; shot.y += wall.t*shot.dy; }
+        shot.blast = 0;
+        shot.frontImpact = !expired && !wall && cabHit &&
+          cardinal(car.angle)===((cardinal(shot.heading*16)+2)&3);
+        if (shot.frontImpact) placeFrontImpact(shot,car,district.start.sine);
+        else car.mineSound = randomBit();
+      } else state.shots.delete(shot);
+      if (!expired && cabHit && !(shot.missile && wall)) {
+        const damage = shot.missile ? district.missileDamage : wallTracerDamage;
+        car.health = Math.max(0,car.health-damage);
+        if (!car.landingStep) {
+          car.landingStep=1;
+          car.seatEffect=shot.missile ? 'mineOffsets' : 'shotOffsets';
+        }
+      }
       continue;
     }
     shot.x += shot.dx; shot.y += shot.dy;
     const angle = (bearing(car.x-shot.x,car.y-shot.y,district.start.mapDisplay.bearings)+shot.heading+101)%360;
     const side = (Math.trunc(angle*2/45)+8)&15;
     shot.flip = side>8;
-    shot.image = [0,1,2,3,3,3,2,1,0][Math.min(side,16-side)];
+    const image = Math.min(side,16-side);
+    shot.image = shot.missile ? image : [0,1,2,3,3,3,2,1,0][image];
   }
 }

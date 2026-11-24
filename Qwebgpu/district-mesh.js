@@ -244,6 +244,7 @@ export function districtMesh(district) {
     return rect;
   }
   const floorMap = pack({width: 320, height: 200, pixels: linearPixels(district.floor.planes)});
+  const missileRects = (district.missile ?? []).map(pack);
   const hazardRects = (district.hazardFrames ?? []).map(pack);
   const banks = district.banks.map(bank => bank.map(pack));
   // 0x2BFDB numbers flagged materials in bank/image order. ANIM rows use that ordinal.
@@ -293,13 +294,15 @@ export function districtMesh(district) {
         if (node < 0) continue;
         const [a,b,c] = face.vertices;
         if (face.floor) {
-          const tile = block.materials[2*(variant*block.variantStride+face.material)+1];
+          // KFLOOR tile zero is continuous, unmarked road asphalt.
+          const tile = face.roof ? 0 : block.materials[2*(variant*block.variantStride+face.material)+1];
           const side = Math.sign(c[1]-a[1]);
           if (!side || tile >= 15) continue;
           const rect = [floorMap[0]+tile%5*64,floorMap[1]+Math.floor(tile/5)*64,64,64];
-          const period = 64 * 2**face.textureScale;
+          const period = face.roof ? 64 : 64 * 2**face.textureScale;
+          const rotation = face.roof ? 0 : face.textureOrientation;
           if (face.roof) {
-            const roof = {rect,period,rotation:face.textureOrientation,z:a[2]};
+            const roof = {rect,period,rotation,z:a[2]};
             for (const [side,touches] of [a[0]===0,c[0]===512,a[1]===0,c[1]===512].entries()) {
               if (touches && (!edges[side] || roof.z<edges[side].z)) edges[side] = roof;
             }
@@ -308,8 +311,8 @@ export function districtMesh(district) {
             for (const j of [0,k-1,k]) {
               const [vx,vy,vz] = face.vertices[j];
               // 0x447FF dispatches the four rotations in the floor span mapper.
-              const u = [vx,vy,-vx,-vy][face.textureOrientation];
-              const v = [vy,-vx,-vy,vx][face.textureOrientation];
+              const u = [vx,vy,-vx,-vy][rotation];
+              const v = [vy,-vx,-vy,vx][rotation];
               vertices.push(vx,vy,vz,u/period,v/period,...rect,0,0,face.roof ? -5 : side > 0 ? -2 : -3);
               surfaceNodes.push(face.roof ? 0 : node);
             }
@@ -412,20 +415,28 @@ export function districtMesh(district) {
     roofRanges.get(roof).cells.push({x:cell%district.grid.width*512,y:Math.floor(cell/district.grid.width)*512,
       haloFirst:0,haloCount:0});
   }
-  const hazardRanges = hazardRects.concat(hazardRects.slice(14)).map((rect,i) => {
-    // 0x2DA48 projects dynamic scale with a seven-bit shift. Placed
-    // objects at 0x42774 use ten, giving the dynamic sprites 1/8 the size.
-    const first = vertices.length/12, scale = (i===0 ? 256 : i<=12 ? 1024 : 384)/512;
-    const [ox,oy] = i>0 && i<=12 ? district.blastOffsets[i-1] : [0,0];
-    const z = i<=12 ? 14 : i===13 ? -8 : -16;
+  // 0x2DA48 uses a seven-bit projection shift for actors. Placed sprites
+  // use ten at 0x42774, so actor scale 512 gives one world unit per texel.
+  function actorSprite(rect,scale,z,offset=[0,0],flip=false) {
+    const first = vertices.length/12;
+    const ox = (flip ? -1 : 1)*offset[0]*scale, oy = offset[1]*scale;
     const w = rect[2]*scale, h = rect[3]*scale;
     for (const [u,v] of [[0,0],[1,0],[1,1],[0,0],[1,1],[0,1]]) {
-      vertices.push(0,0,z+oy*scale+(v-0.5)*h,i>=18 ? 1-u : u,v,...rect,ox*scale+(u-0.5)*w,0,-4);
+      vertices.push(0,0,z+oy+(v-0.5)*h,flip ? 1-u : u,v,...rect,ox+(u-0.5)*w,0,-4);
       surfaceNodes.push(0);
     }
-    return {first,count:6,bounds:{x:0,y:0,z:z+oy*scale,radius:Math.hypot(w+2*Math.abs(ox)*scale,h)/2}};
+    return {first,count:6,bounds:{x:0,y:0,z:z+oy,radius:Math.hypot(w+2*Math.abs(ox),h)/2}};
+  }
+  const hazardRanges = hazardRects.concat(hazardRects.slice(14)).map((rect,i) => {
+    if (i===0) return actorSprite(rect,0.5,14);
+    if (i<=12) return actorSprite(rect,2,14,district.blastOffsets[i-1]);
+    return actorSprite(rect,0.75,i===13 ? -8 : -16,[0,0],i>=18);
   });
-  return {atlas, sky, skyIndex, blockLights, ranges, animations,hazardRanges,roofGroups:[...roofRanges.values()],
+  const missileRanges = (district.missileViews ?? []).flatMap(([image,x,y]) =>
+    [false,true].map(flip => actorSprite(missileRects[image],0.75,0,[x,y],flip)));
+  const blastRanges = [0.75,1,4].flatMap(scale => hazardRects.slice(1,13).map((rect,i) =>
+    actorSprite(rect,scale,0,district.blastOffsets[i])));
+  return {atlas, sky, skyIndex, blockLights, ranges, animations,hazardRanges,missileRanges,blastRanges,roofGroups:[...roofRanges.values()],
     vertices:new Float32Array(vertices), surfaceNodes:Uint32Array.from(surfaceNodes)};
 }
 

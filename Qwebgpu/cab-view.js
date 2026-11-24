@@ -17,7 +17,7 @@ struct View {
   eye: vec4f, axes: vec4f, scale: vec4f, outputSize: vec4f,
   sky: vec4f, player: vec4f, settings: vec4f,
   ambient: vec4f, backdrop: vec4f, hd: vec4u, skyTint: vec4f,
-  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,6>
+  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,6>, cabSeat: vec4f
 };
 fn skyRay(uv: vec2f) -> vec3f {
   let offset = (2.0*uv-1.0)/view.scale.xy;
@@ -55,6 +55,7 @@ struct BspNode { plane: vec4f, links: vec4f };
 @group(0) @binding(14) var<storage,read> bsp: array<BspNode>;
 @group(0) @binding(15) var reflections: texture_cube<f32>;
 @group(0) @binding(16) var wayfinder: texture_2d<f32>;
+@group(0) @binding(17) var hdFloor: texture_2d<f32>;
 // Rank this surface in the far-child, splitter, near-child walk at 0x4012C.
 // Only surfaces sharing a plane need a tie-break in the GPU depth buffer.
 fn painterRank(surface: u32, eye: vec3f) -> f32 {
@@ -87,15 +88,15 @@ struct Surface {
   @location(8) @interpolate(flat) normalAndLamp: vec4f
 };
 @vertex fn world(@location(0) point: vec3f, @location(1) uv: vec2f,
-                 @location(2) rect: vec4f, @location(3) cell: vec2f,
+                 @location(2) rect: vec4f, @location(3) cell: vec3f,
                  @location(4) wall: vec3f, @location(5) surface: u32) -> Surface {
   let forward = view.axes.xy;
   let right = vec2f(-forward.y,forward.x);
-  var xy = point.xy + cell;
+  var xy = point.xy + cell.xy;
   let placed = wall.z == -4.0;
   if (placed) { xy += right * wall.x; }
   let d = xy-view.eye.xy;
-  let z = point.z - view.eye.z;
+  let z = point.z+cell.z - view.eye.z;
   let along = dot(d,forward);
   let depth = along*view.axes.z + z*view.axes.w;
   let down = z*view.axes.z - along*view.axes.w;
@@ -103,13 +104,13 @@ struct Surface {
   // Reverse depth keeps distant map cells precise without a far clipping plane.
   out.pos = vec4f(dot(d,right)*view.scale.x,-down*view.scale.y,view.backdrop.x,depth);
   if (surface != 0u) {
-    let bias = (view.backdrop.x/12.0)*0.000004*painterRank(surface,vec3f(view.eye.xy-cell,view.eye.z));
+    let bias = (view.backdrop.x/12.0)*0.000004*painterRank(surface,vec3f(view.eye.xy-cell.xy,view.eye.z));
     out.pos.z += min(max(depth-out.pos.z,0.0),bias);
   }
   out.uv = uv; out.rect = rect; out.transparent = select(0.0,1.0,placed);
   out.flags = wall.z;
   out.facing = wall.x*(view.eye.y-xy.y)-wall.y*(view.eye.x-xy.x);
-  out.height = point.z;
+  out.height = point.z+cell.z;
   out.worldPos = vec3f(xy,z+view.eye.z);
   out.normalAndLamp = vec4f(0.0);
   if (placed) { out.normalAndLamp.w = wall.y; }
@@ -266,20 +267,27 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
       surface = textureSrgb(textureLinear(surface)+sharpened-center);
     }
   }
+  var ink = textureLoad(colors,vec2i(i32(index),0),0).rgb;
+  if ((in.flags == -2.0 || in.flags == -3.0 || in.flags == -5.0) && textureDimensions(hdFloor).x > 1u) {
+    // The first atlas item is the original 320x200 floor tile sheet.
+    let pixel = (in.rect.xy + fract(uv)*in.rect.zw)/vec2f(320,200)*vec2f(textureDimensions(hdFloor));
+    let replacement = textureLoad(hdFloor,vec2i(pixel),0).rgb;
+    surface = clamp(replacement + surface - ink,vec3f(0),vec3f(1));
+    ink = replacement;
+  }
   let irradiance = lightAt(in.worldPos,in.normalAndLamp.xyz,in.flags != -4.0);
   var lit = surface*sqrt(irradiance);
-  let ink = textureLoad(colors,vec2i(i32(index),0),0).rgb;
   var emissive = vec3f(0.0);
   if (view.headlamps[0].w > 0.0) {
     let whiteLight = headlightAt(in.worldPos,in.normalAndLamp.xyz,in.flags == -4.0);
-    lit += textureLoad(colors,vec2i(i32(index),0),0).rgb*whiteLight;
+    lit += ink*whiteLight;
   }
   lit += ink*vec3f(1.0,0.015,0.008)*tailLightAt(in.worldPos,in.normalAndLamp.xyz,in.flags == -4.0);
   if (in.flags == -2.0) {
     let delta = in.worldPos-view.player.xyz;
     if (delta.z > 0.0) {
       let forward = view.outputSize.zw;
-      let local = vec2f(dot(delta.xy,vec2f(-forward.y,forward.x))/30.0,dot(delta.xy,forward)/55.0);
+      let local = vec2f(dot(delta.xy,vec2f(-forward.y,forward.x))/30.0,dot(delta.xy,forward)/55.0)/view.textureEffects.w;
       let pool = 1.0-smoothstep(0.1,1.0,length(local));
       let height = 1.0-smoothstep(20.0,120.0,delta.z);
       lit += max(ink,vec3f(0.13))*vec3f(0.14,0.55,1.0)*(2.56*pool*height);
@@ -362,9 +370,9 @@ struct CabVertex {
   let face = i/6u;
   let uv = corners[i%6u];
   let interior = view.player.w == 0.0;
-  let halfWidth = select(${cabBody.width/2}.0,${cabinHalfWidth}.0,interior);
-  let front = select(${cabBody.length/2}.0,${windshieldDistance}.0,interior);
-  let rear = select(-${cabBody.length/2}.0,-48.0,interior);
+  let halfWidth = select(${cabBody.width/2},${cabinHalfWidth}.0,interior);
+  let front = select(${cabBody.length/2},${windshieldDistance}.0,interior);
+  let rear = select(-${cabBody.length/2},-48.0,interior);
   let top = select(${cabBody.base-cabBody.height}.0,-${cabinTopClearance}.0,interior);
   let bottom = select(${cabBody.base}.0,20.0,interior);
   let x = mix(-halfWidth,halfWidth,uv.x);
@@ -526,7 +534,7 @@ async function buildPipelines({device,format}) {
     {binding:12,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},
     ...[13,14].map(binding => ({binding,visibility:GPUShaderStage.VERTEX,buffer:{type:'read-only-storage'}})),
     {binding:15,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float',viewDimension:'cube'}},
-    {binding:16,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}]});
+    ...[16,17].map(binding => ({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}))]});
   const layout = device.createPipelineLayout({bindGroupLayouts:[bindLayout]});
   function pipeline(vertex,fragment,buffers=[]) {
     const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo';
@@ -545,7 +553,7 @@ async function buildPipelines({device,format}) {
     {arrayStride:48,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x2'},
       {shaderLocation:2,offset:20,format:'float32x4'},{shaderLocation:4,offset:36,format:'float32x3'}]},
-    {arrayStride:8,stepMode:'instance',attributes:[{shaderLocation:3,offset:0,format:'float32x2'}]},
+    {arrayStride:12,stepMode:'instance',attributes:[{shaderLocation:3,offset:0,format:'float32x3'}]},
     {arrayStride:4,attributes:[{shaderLocation:5,offset:0,format:'uint32'}]}]),
     pipeline('haloVertex','haloPixel',[{arrayStride:28,stepMode:'instance',attributes:[
       {shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32'},
@@ -599,15 +607,16 @@ function visibleDistrict(groups, camera, sx, sy, instances, halos, visibleHalos)
   for (const {first,count,bounds,cells} of groups) {
     const start = instanceCount;
     for (const cell of cells) {
-      const x = cell.x+bounds.x-camera.x, y = cell.y+bounds.y-camera.y, z = bounds.z-camera.z;
+      const x = cell.x+bounds.x-camera.x, y = cell.y+bounds.y-camera.y, z = (cell.z ?? 0)+bounds.z-camera.z;
       const along = x*camera.fx+y*camera.fy;
       const depth = along*cos+z*sin;
       const across = -x*camera.fy+y*camera.fx, up = along*sin-z*cos;
       if (depth+bounds.radius < 0.5 ||
           Math.abs(across)*sx > depth+bounds.radius*horizontalMargin ||
           Math.abs(up)*sy > depth+bounds.radius*verticalMargin) continue;
-      instances[2*instanceCount] = cell.x;
-      instances[2*instanceCount+1] = cell.y;
+      instances[3*instanceCount] = cell.x;
+      instances[3*instanceCount+1] = cell.y;
+      instances[3*instanceCount+2] = cell.z ?? 0;
       instanceCount++;
       const begin = cell.haloFirst*7, end = begin+cell.haloCount*7;
       visibleHalos.set(halos.subarray(begin,end),haloCount*7);
@@ -646,13 +655,18 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT}));
   const hdTextures = [district.hdSky,district.hdCab,district.hdDoor].map(bitmap => createHDTexture(device,bitmap));
   for (const image of hdTextures) if (image) own(image);
-  const hdFallback = hdTextures.every(Boolean) ? null : texture(1,1,'rgba8unorm');
+  const hdFloor = createHDTexture(device,district.hdFloor);
+  if (hdFloor) own(hdFloor);
+  const hdFallback = hdFloor && hdTextures.every(Boolean) ? null : texture(1,1,'rgba8unorm');
   const vertices = buffer(mesh.vertices.byteLength,GPUBufferUsage.VERTEX,mesh.vertices);
   const surfaceNodes = buffer(mesh.surfaceNodes.byteLength,GPUBufferUsage.VERTEX,mesh.surfaceNodes);
   const {groups,halos} = districtDraws(district);
   const hazardGroups = mesh.hazardRanges.map(range => ({...range,cells:[]}));
-  groups.push(...mesh.roofGroups,...hazardGroups);
-  const instanceData = new Float32Array((district.tiles.length+40)*2), haloData = new Float32Array(halos.length);
+  const missileGroups = mesh.missileRanges.map(range => ({...range,cells:[]}));
+  const blastGroups = mesh.blastRanges.map(range => ({...range,cells:[]}));
+  const actors = [...hazardGroups,...missileGroups,...blastGroups];
+  groups.push(...mesh.roofGroups,...actors);
+  const instanceData = new Float32Array((district.tiles.length+40)*3), haloData = new Float32Array(halos.length);
   const instances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionSize = 128;
@@ -666,7 +680,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const reflectionInstances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const reflectionHalos = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionData = new Float32Array(instanceData.length), reflectionHaloData = new Float32Array(haloData.length);
-  const uniforms = new Float32Array(80), reflectionUniforms = new Float32Array(80);
+  const uniforms = new Float32Array(84), reflectionUniforms = new Float32Array(84);
   const headlamps = session.taxi?.headlamps ?? [[-0.36*cabBody.width,cabBody.length/2,8],[0.36*cabBody.width,cabBody.length/2,8]];
   const taillamps = session.taxi?.taillamps?.length === 6 ? session.taxi.taillamps :
     [-0.36,0.36].flatMap(side => [6,8,10].map(down => [side*cabBody.width,-cabBody.length/2,down]));
@@ -724,6 +738,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     {binding:13,resource:{buffer:wallFrames}},
     {binding:14,resource:{buffer:bsp}},
     {binding:16,resource:wayfinderTexture.createView()},
+    {binding:17,resource:(hdFloor ?? hdFallback).createView()},
   ];
   const reflectionGroup = device.createBindGroup({layout:bindLayout,entries:[
     ...bindings.map(entry => entry.binding === 0 ? {binding:0,resource:{buffer:reflectionBuffer}} : entry),
@@ -762,16 +777,23 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   function draw(car,welcome,brightness=1) {
     const camera = cameraPose(car,district);
     const wheel = 3+Math.sign(car.steering)*[70,210,350].filter(n => Math.abs(car.steering)>n).length;
-    const sx = 1/Math.tan(settings.fov*Math.PI/360), sy = sx*aspectNow;
+    // The 64-degree detent represents SKIPIT's 256-pixel focal length
+    // across a 320-pixel viewport (0x30DC8).
+    const sx = settings.fov===64 ? 256/160 : 1/Math.tan(settings.fov*Math.PI/360);
+    const sy = sx*aspectNow;
     const cosPitch = Math.cos(camera.pitch), sinPitch = Math.sin(camera.pitch);
     uniforms[32] = 0.5;
-    for (const group of hazardGroups) group.cells.length = 0;
+    for (const group of actors) group.cells.length = 0;
     for (const mine of car.hazards.mines.values()) hazardGroups[mine.frame+1].cells.push(mine);
-    for (const gun of car.hazards.guns.values()) hazardGroups[13].cells.push(gun);
-    for (const shot of car.hazards.shots) hazardGroups[(shot.flip ? 18 : 14)+shot.image].cells.push(shot);
+    for (const gun of car.hazards.guns.values()) if (gun.launcher===undefined) hazardGroups[13].cells.push(gun);
+    for (const shot of car.hazards.shots) {
+      if (shot.blast!==undefined) blastGroups[shot.blast+(shot.frontImpact ? 24 : shot.flash ? 12 : 0)].cells.push(shot);
+      else if (shot.missile) missileGroups[2*shot.image+Number(shot.flip)].cells.push(shot);
+      else hazardGroups[(shot.flip ? 18 : 14)+shot.image].cells.push(shot);
+    }
     const {visible,instanceCount,haloCount} = visibleDistrict(groups,camera,sx,sy,instanceData,halos,haloData);
     streetStats = {batches:visible.length,instances:instanceCount,vertices:mesh.vertices.length/12};
-    if (instanceCount) device.queue.writeBuffer(instances,0,instanceData.subarray(0,instanceCount*2));
+    if (instanceCount) device.queue.writeBuffer(instances,0,instanceData.subarray(0,instanceCount*3));
     if (haloCount) device.queue.writeBuffer(haloInstances,0,haloData.subarray(0,haloCount*7));
     const heading = car.angle*Math.PI/2880;
     uniforms.set([camera.x,camera.y,camera.z,camera.angle,
@@ -782,6 +804,8 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     uniforms[43] = now/1000;
     uniforms[52] = settings.upscale;
     uniforms[53] = settings.sharpen/100;
+    uniforms.set(car.camera ? [0,0,0] : session.taxi?.eye ?? [0,0,0],80);
+    uniforms[55] = session.taxi?.cabRatio ?? cabBody.length/78;
     uniforms[54] = Number(settings.reflections > 0);
     for (const [i,[right,front,down]] of headlamps.entries()) {
       const x = car.x+uniforms[14]*(front+1)-uniforms[15]*right;
@@ -814,7 +838,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
         fx,fy,pitch,angle:Math.atan2(fx,fy)};
       const reflected = visibleDistrict(groups,reflectionCamera,1,1,reflectionData,halos,reflectionHaloData);
       if (reflected.instanceCount) device.queue.writeBuffer(reflectionInstances,0,
-        reflectionData.subarray(0,reflected.instanceCount*2));
+        reflectionData.subarray(0,reflected.instanceCount*3));
       if (reflected.haloCount) device.queue.writeBuffer(reflectionHalos,0,
         reflectionHaloData.subarray(0,reflected.haloCount*7));
       reflectionUniforms.set(uniforms);
@@ -852,7 +876,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     const filtered = settings.fxaa > 0;
     if (!filtered) postprocess.release();
     const target = filtered ? postprocess.target(renderWidth,renderHeight,canvas.width,canvas.height) : output;
-    const pass = encoder.beginRenderPass({colorAttachments:[{view:target,
+    let pass = encoder.beginRenderPass({colorAttachments:[{view:target,
       loadOp:'clear',storeOp:'store',clearValue:[0,0,0,1]}],depthStencilAttachment:{
       view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
     pass.setBindGroup(0,group);
@@ -867,10 +891,10 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     const eyeAcross = eyeY*uniforms[14]-eyeX*uniforms[15];
     const outsideBody = Math.abs(eyeAhead) > cabBody.length/2 || Math.abs(eyeAcross) > cabBody.width/2 ||
       camera.z < car.z+cabBody.base-cabBody.height;
-    if (session.taxi) {
+    if (session.taxi && car.camera) {
       session.taxi.draw(pass,session.pipelines.taxi.opaque,false);
       session.taxi.monitor?.draw(pass,session.pipelines.taxi.opaque,false);
-    } else if (car.camera && outsideBody) {
+    } else if (!session.taxi && car.camera && outsideBody) {
       pass.setPipeline(bodyPipeline); pass.draw(36);
     }
     if (haloCount) {
@@ -884,6 +908,16 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
       pass.setPipeline(session.pipelines.taillampPipeline); pass.draw(6,taillamps.length);
     }
     if (session.taxi) {
+      if (!car.camera) {
+        // The fitted interior is positioned around the retail eye. Give the cab
+        // its own depth pass so the street below that eye cannot occlude the footwell.
+        pass.end();
+        pass = encoder.beginRenderPass({colorAttachments:[{view:target,loadOp:'load',storeOp:'store'}],
+          depthStencilAttachment:{view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
+        pass.setBindGroup(0,group);
+        session.taxi.draw(pass,session.pipelines.taxi.opaque,false);
+        session.taxi.monitor?.draw(pass,session.pipelines.taxi.opaque,false);
+      }
       // Sort the transparent primitives on the camera's forward axis in cab coordinates.
       const direction = [(-uniforms[15]*camera.fx+uniforms[14]*camera.fy)*cosPitch,
         (uniforms[14]*camera.fx+uniforms[15]*camera.fy)*cosPitch,sinPitch];

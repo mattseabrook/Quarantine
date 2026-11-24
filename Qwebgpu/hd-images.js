@@ -1,7 +1,7 @@
 const images = new Map();
 
 export function loadHDImage(name) {
-  const stem = /^([A-Za-z0-9_.-]+)\.img$/i.exec(name)?.[1];
+  const stem = /^([A-Za-z0-9_.-]+)\.(?:img|gif)$/i.exec(name)?.[1];
   if (!stem) return Promise.resolve(null);
   if (!images.has(stem)) images.set(stem, readPNG(stem));
   return images.get(stem);
