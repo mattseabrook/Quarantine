@@ -9,6 +9,13 @@
 </head>
 <body>
   <main>
+    <video id="demoIntro" playsinline disablepictureinpicture aria-label="Lakeshore intro" hidden></video>
+    <button id="playDemoIntro" type="button" hidden>Play intro</button>
+    <div id="demoLoading" hidden>
+      <label for="demoProgress">Loading <span id="demoLoadingFile"></span></label>
+      <span id="demoPercent"></span>
+      <progress id="demoProgress" max="100" value="0"></progress>
+    </div>
     <canvas id="screen" width="320" height="200" tabindex="-1" aria-label="Quarantine game screen" hidden></canvas>
     <canvas id="wayfinder" width="64" height="52" role="img" aria-label="Wayfinder" hidden></canvas>
     <output class="fps-counter" data-fps aria-label="Rendered frames per second">-- FPS</output>

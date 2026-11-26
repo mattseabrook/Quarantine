@@ -15,12 +15,20 @@ p { margin: 1rem 0 1.4rem; }
 button { color: #151511; background: #eab265; }
 button:disabled { opacity: .45; }
 :focus-visible, .picker:focus-within { outline: 2px solid #ffd99c; outline-offset: 3px; }
+#demoIntro { position: fixed; inset: 0; z-index: 12; width: 100%; height: 100dvh; object-fit: contain; background: black; }
+#playDemoIntro { position: fixed; z-index: 13; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+#demoLoading { position: fixed; z-index: 2; bottom: max(1rem, calc((100dvh - 75vw)/2 + 1rem));
+  width: min(80vw, 85dvh, 32rem); padding: .6rem .9rem; background: #120606e8; color: #fff;
+  display: grid; grid-template-columns: 1fr auto; gap: .25rem 1rem; font: .9rem/1.4 monospace; }
+#demoLoading label { overflow-wrap: anywhere; }
+#demoProgress { grid-column: 1 / -1; width: 100%; accent-color: #e74535; }
 #screen { display: block; width: min(100vw, 133.333dvh); height: auto; aspect-ratio: 4 / 3; image-rendering: pixelated; outline: 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 #screen.driving { position: fixed; inset: 0; width: 100%; height: 100dvh; aspect-ratio: auto; }
 #screen.driving.hide-cursor { cursor: none; }
 #wayfinder { position: fixed; right: 2vw; top: 2dvh; width: clamp(96px, 13vmin, 192px);
   height: auto; pointer-events: none; image-rendering: pixelated; }
+#wayfinder.chase { right: 0; top: auto; bottom: 0; }
 .fps-counter { position: fixed; top: .5rem; right: .5rem; z-index: 10; padding: .25rem .5rem;
   background: #101318d9; color: #f5bb60; font: 600 .85rem/1.2 ui-monospace, monospace; pointer-events: none; }
 [hidden] { display: none !important; }

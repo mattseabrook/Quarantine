@@ -385,14 +385,18 @@ async function startGame() {
     document.addEventListener('keydown', unlockAudio, {capture:true,signal:audioEvents.signal});
     document.addEventListener('click', unlockAudio, {capture:true,signal:audioEvents.signal});
     unlockAudio();
-    display ??= await createDisplay(screen);
     if (config.demo) {
-      const clickBuffer = readVoice(audio,await bytes('CLICKER.VOC'),'CLICKER.VOC');
-      await runDemo({screen, display, bytes, getFile, getAudioTrack, audio, launcher,
-        click:() => audio.state === 'running' && sound(clickBuffer)});
+      await runDemo({screen, launcher, audio, bytes, getFile, getAudioTrack,
+        introSource:uploaded ? files.get('LAKESHORE.MP4') : assetUrl('lakeshore.mp4'),
+        getDisplay:async () => display ??= await createDisplay(screen),
+        loadClick:async () => {
+          const buffer = readVoice(audio,await bytes('CLICKER.VOC'),'CLICKER.VOC');
+          return () => audio.state === 'running' && sound(buffer);
+        }});
       status.textContent = 'Demo driving ended.';
       return;
     }
+    display ??= await createDisplay(screen);
     if (config.developerMode) {
       const tables = readPromptTables(await bytes('SKIPIT.EXE'));
       const vga = indexedDisplay(display,tables.step);

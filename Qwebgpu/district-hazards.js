@@ -30,7 +30,8 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
     state.randomIndex = (state.randomIndex+1)&255;
     return tables.random[state.randomIndex]&1;
   }
-  state.phase = (state.phase+1)%5;
+  const demo = district.start.demo;
+  state.phase = (state.phase+1)%(demo ? 4 : 5);
   if ([0,1,4].includes(state.phase)) {
     const column = tables.columns[state.column];
     state.column = (state.column+1)%tables.columns.length;
@@ -47,12 +48,12 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
         state.guns.set(cell,{x:x*512,y:y*512,launcher,port:0,cooldown:4});
       }
       if (space && !state.phase && slot>=0) {
-        const [ox,oy,heading] = [[32,256,90],[480,256,270],[256,32,0],[256,480,180]][slot];
+        const [ox,oy,heading] = [[32,256,90],[480,256,270],[256,32,0],[256,480,180],[256,256,0]][slot];
         state.guns.set(cell,{x:x*512+ox,y:y*512+oy,heading,step:0,timer:0,burst:0,cooldown:0,
-          cycles:slot===0 ? 2 : 1,haloFirst:0,haloCount:0});
+          centerMount:slot===4,cycles:demo || slot===0 ? 2 : 1,haloFirst:0,haloCount:0});
       }
       if (space && state.phase && marker>=1 && marker<=3) {
-        let lane = district.collision[tile&127];
+        let lane = (tables.roadClasses ?? district.collision)[tile&127];
         if (lane!==1 && lane!==2) lane = 1+randomBit();
         const selector = tables.mineSelectors[marker-1];
         const [ox,oy] = selector ? tables.lanes[2*lane+selector-1] : [256,256];
@@ -62,7 +63,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
   }
   // A cab can enter a corner sideways without ever pointing the five-cell
   // forward probe at it. Catch up adjacent retail launcher tiles on phase zero.
-  if (!state.phase) {
+  if (!demo && !state.phase) {
     for (let y=Math.max(0,cy-1); y<=Math.min(district.height-1,cy+1); y++) {
       for (let x=Math.max(0,cx-1); x<=Math.min(district.width-1,cx+1); x++) {
         const cell = y*district.width+x, tile = district.tiles[cell];
@@ -84,12 +85,17 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
       car.health = Math.max(0,car.health-district.mineDamage);
       car.mineSound = randomBit();
       if (!car.landingStep) { car.landingStep=1; car.seatEffect='mineOffsets'; }
-      if (!car.hover) { car.hover = -1; car.fallSpeed = 30<<4; }
+      if (!car.hover) {
+        const power = demo ? 56 : 30;
+        car.hover = -1;
+        car.fallSpeed = power<<4;
+        if (demo) car.landingCounter = Math.max(1,Math.trunc(20*(power>>3)/rate));
+      }
     }
   }
   // 0x4D4A0 walks a 17-word sweep, then opens a timed firing window.
   const duration = units => Math.max(1,Math.trunc(units*rate/12));
-  const distance = units => Math.max(1,Math.trunc(units*12/rate));
+  const distance = units => Math.max(1,Math.trunc(units*(demo ? 20 : 12)/rate));
   for (const [cell,gun] of state.guns) {
     if (Math.abs((gun.x>>9)-cx)>5 || Math.abs((gun.y>>9)-cy)>5) {
       state.guns.delete(cell);
@@ -108,25 +114,31 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
           car.launchSound = true;
         }
         if (state.shots.size<20) state.shots.add({...origin,blast:-1,flash:true});
-        gun.cooldown = duration(gun.launcher===4 ? 90 : 45);
+        gun.cooldown = duration(demo ? 30 : gun.launcher===4 ? 90 : 45);
       }
       gun.cooldown--;
       continue;
     }
+    if (demo) {
+      const yaw = gun.centerMount ? 0 : 23*tables.sweeps[gun.heading/90][gun.step];
+      const angle = (bearing(car.x-gun.x,car.y-gun.y,district.start.mapDisplay.bearings)+yaw+101)%360;
+      gun.image = Math.trunc(angle/23)+16*(gun.burst&1);
+    }
+    if (gun.centerMount) continue; // QDEMO 0x20E52 bypasses the sweep and burst setup.
     gun.cooldown = Math.max(0,gun.cooldown-1);
     if (!gun.burst) {
-      if (++gun.timer>=duration(1)) { gun.timer=0; gun.step++; }
+      if (++gun.timer>=(demo ? 1 : duration(1))) { gun.timer=0; gun.step++; }
       if (tables.sweeps[gun.heading/90][gun.step]===99) {
         if (--gun.cycles>0) gun.step=0;
-        else { gun.step--; gun.burst=duration(16); }
+        else { gun.step--; gun.burst=demo ? 16 : duration(16); }
       }
       continue;
     }
     if (!gun.cooldown && state.shots.size<20) {
       const dx = [0,1,0,-1][gun.heading/90], dy = [1,0,-1,0][gun.heading/90];
-      state.shots.add({x:gun.x+dx*distance(16),y:gun.y+dy*distance(16),heading:gun.heading,
+      state.shots.add({x:gun.x+dx*distance(16),y:gun.y+dy*distance(16),z:demo ? -20 : undefined,heading:gun.heading,
         dx:dx*distance(60),dy:dy*distance(60),life:30,haloFirst:0,haloCount:0});
-      gun.cooldown = duration(7);
+      gun.cooldown = demo ? 7 : duration(7);
     }
     if (--gun.burst===0) { gun.step=0; gun.cycles=2; }
   }
@@ -155,7 +167,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
         else car.mineSound = randomBit();
       } else state.shots.delete(shot);
       if (!expired && cabHit && !(shot.missile && wall)) {
-        const damage = shot.missile ? district.missileDamage : wallTracerDamage;
+        const damage = shot.missile ? district.missileDamage : demo ? 3 : wallTracerDamage;
         car.health = Math.max(0,car.health-damage);
         if (!car.landingStep) {
           car.landingStep=1;
@@ -169,6 +181,6 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
     const side = (Math.trunc(angle*2/45)+8)&15;
     shot.flip = side>8;
     const image = Math.min(side,16-side);
-    shot.image = shot.missile ? image : [0,1,2,3,3,3,2,1,0][image];
+    shot.image = shot.missile ? image : (tables.tracerImages ?? [0,1,2,3,3,3,2,1,0])[image];
   }
 }

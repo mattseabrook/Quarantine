@@ -158,8 +158,9 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
   const held = new Set(), dt = 1/ticksPerSecond;
   const status = document.querySelector('#checkpoint');
   const mouseHint = document.querySelector('#mouseCaptureHint');
-  let hideStatus;
+  let hideStatus, demoPrompt = null;
   function report(message) {
+    if (demoPrompt) return;
     status.textContent = message;
     status.hidden = false;
     if (message.startsWith('CD audio:') || message.startsWith('Sound FX:')) debugConsole?.write(message);
@@ -174,7 +175,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
   let view, debugConsole, disc, effects, mapView, mapLoading = false, animation, previous, nextFrame, accumulator = 0, fade = 0, leaving = false, fps = 0;
   let resizeNeeded = true, mouseCaptured = false, captureWanted = false, capturePending = false, captureGeneration = 0;
   function drivingInput() {
-    return !mapView && !mapLoading && !leaving && !settingsPanel.open && document.hasFocus();
+    return !mapView && !mapLoading && !demoPrompt && !leaving && !settingsPanel.open && document.hasFocus();
   }
   function updateMouseCaptureUI() {
     const active = !events.signal.aborted && drivingInput() && !document.hidden;
@@ -198,8 +199,21 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
   }
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
-      'W and S drive, A and D steer. Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. '+(session.demo ? 'J or Z jumps. ' : '')+
-      'V toggles headlights. Scroll to zoom in chase. C changes CD track, P pauses music. Tilde opens settings. Minus and plus change resolution. Escape '+(session.demo ? 'returns to the title.' : 'opens the menu.'));
+      'WASD or arrow keys drive and steer. '+
+      'Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. '+(session.demo ? 'J or Z jumps. P pauses. ' : '')+
+      'V toggles headlights. Scroll to zoom in chase. '+(session.demo ? '' : 'C changes CD track, P pauses music. ')+'Minus and plus change resolution. Tilde opens settings. Escape '+(session.demo ? 'asks whether to exit.' : 'opens the menu.'));
+  }
+  function requestExit() {
+    if (!session.demo) { leaving = true; held.clear(); return; }
+    openDemoPrompt('quit');
+  }
+  function openDemoPrompt(kind) {
+    demoPrompt = kind;
+    release();
+    clearTimeout(hideStatus);
+    status.textContent = kind === 'quit' ? 'ARE YOU SURE YOU WANT TO EXIT? (Y/N)' : 'GAME PAUSED';
+    status.hidden = false;
+    screen.setAttribute('aria-label',status.textContent);
   }
   function dismiss() { session.welcome = false; describe(); updateMouseCaptureUI(); }
   async function openMap() {
@@ -235,7 +249,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
     debugConsole = createConsole(screen,district,car,view);
     effects = createDrivingAudio(audio,session.sounds);
     session.reportCd = report;
-    if (!session.disc) {
+    if (!session.demo && !session.disc) {
       session.disc = createDrivingDisc(getAudioTrack,message => session.reportCd?.(message));
       session.disc.start();
     }
@@ -244,6 +258,16 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
     describe();
     document.addEventListener('keydown', e => {
       if (leaving) return;
+      if (demoPrompt) {
+        if (e.repeat || (demoPrompt === 'quit' && e.code !== 'KeyY' && e.code !== 'KeyN')) return;
+        e.preventDefault();
+        const confirmed = demoPrompt === 'quit' && e.code === 'KeyY';
+        demoPrompt = null;
+        status.hidden = true;
+        if (confirmed) leaving = true;
+        else { describe(); updateMouseCaptureUI(); captureMouse(); }
+        return;
+      }
       if (e.code === 'AltLeft' || e.code === 'AltRight') {
         if (drivingInput() && !session.welcome) held.add(e.code);
         return;
@@ -280,8 +304,8 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
       if (mapLoading) return;
       if (e.repeat) return;
       if (session.welcome) { dismiss(); captureMouse(); return; }
-      if (e.code === 'Escape') { leaving = true; held.clear(); }
-      else if ((e.code === 'KeyZ' || session.demo && e.code === 'KeyJ') && drivingInput()) startHover(car);
+      if (e.code === 'Escape') requestExit();
+      else if ((e.code === 'KeyZ' || (session.demo && e.code === 'KeyJ')) && drivingInput()) startHover(car,session.demo ? 60 : 32);
       else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && drivingInput()) effects.horn();
       else if (['F1','F2','F3'].includes(e.code) && drivingInput()) {
         car.camera = 0;
@@ -304,11 +328,14 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
         car.headlights = !car.headlights;
         report(car.headlights ? 'Headlights on' : 'Headlights off');
       }
-      else if (e.code === 'KeyC' || e.code === 'BracketRight') disc.change(1);
-      else if (e.code === 'BracketLeft') disc.change(-1);
-      else if (e.code === 'KeyP') disc.toggle();
-      else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') { view.resize(1); reportMode(); }
-      else if (e.key === '-' || e.code === 'NumpadSubtract') { view.resize(-1); reportMode(); }
+      else if (e.code === 'KeyC' || e.code === 'BracketRight') disc?.change(1);
+      else if (e.code === 'BracketLeft') disc?.change(-1);
+      else if (e.code === 'KeyP') {
+        if (session.demo) openDemoPrompt('pause');
+        else disc.toggle();
+      }
+      else if ((e.key === '+' || e.key === '=' || e.code === 'NumpadAdd')) { view.resize(1); reportMode(); }
+      else if ((e.key === '-' || e.code === 'NumpadSubtract')) { view.resize(-1); reportMode(); }
       else held.add(e.code);
     }, options);
     document.addEventListener('keyup', e => held.delete(e.code), options);
@@ -316,8 +343,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
       const captured = document.pointerLockElement === screen;
       if (mouseCaptured && !captured && drivingInput() && !document.hidden) {
         // Browsers can consume Escape while releasing pointer lock.
-        leaving = true;
-        held.clear();
+        requestExit();
       }
       mouseCaptured = captured;
       if (captured && (!captureWanted || !drivingInput())) releaseMouse();
@@ -448,10 +474,11 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
           visibleCar.chaseFloorLook = car.chaseFloorLook;
           visibleCar.chaseDistance = car.chaseDistance;
           drawInstrument ??= cockpitWayfinder(instrument,session.wayfinder,district,Boolean(session.taxi?.monitor));
-          const updated = drawInstrument(car);
-          if (updated && session.taxi?.monitor) view.updateWayfinder(instrument);
+          const instrumentImage = drawInstrument(car);
+          if (instrumentImage && session.taxi?.monitor) view.updateWayfinder(instrumentImage);
           view.draw(visibleCar,session.welcome,fade);
-          instrument.hidden = Boolean(session.taxi?.monitor || car.camera || !car.waypoint || leaving);
+          instrument.classList.toggle('chase',Boolean(car.camera));
+          instrument.hidden = Boolean(session.taxi?.monitor || (!car.camera && !car.waypoint) || leaving);
           debugConsole.update(now,fps);
           if (leaving && fade === 0) done();
           else animation = requestAnimationFrame(frame);

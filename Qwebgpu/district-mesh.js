@@ -144,92 +144,6 @@ function welcomeOverlay(planes, {start, font}) {
   });
 }
 
-// Chase-view infill uses only rectangular BLK footprints. A diagonal or
-// incomplete outline has no unambiguous rectangular area behind it.
-function roofPatches(block,variant,flags) {
-  const floors = block.faces.filter(f => f.floor && f.vertices.length === 4 &&
-    f.material < block.variantStride && block.surfaceNodes?.[f.surface] !== -1);
-  if (!floors.length || floors.some(f => f.vertices.some(([x,y],i) => {
-    const next = f.vertices[(i+1)%4];
-    return x !== next[0] && y !== next[1];
-  }))) return [];
-  const walls = block.faces.filter(f => !f.floor && f.material < block.variantStride &&
-    block.surfaceNodes?.[f.surface] !== -1 && !(wallFlags(block,variant,f.sideMaterial,flags)&3));
-  function cuts(axis) {
-    const points = [...floors,...walls].flatMap(f => f.vertices.map(v => v[axis]));
-    return [...new Set([0,512,...points.filter(v => v>0 && v<512)])].sort((a,b) => a-b);
-  }
-  const xs = cuts(0), ys = cuts(1), patches = [];
-  for (let i=1; i<xs.length; i++) for (let j=1; j<ys.length; j++) {
-    const x = (xs[i-1]+xs[i])/2, y = (ys[j-1]+ys[j])/2;
-    let nearest = Infinity, floor;
-    for (const f of floors) {
-      const [a,,c] = f.vertices;
-      const dx = Math.max(0,Math.min(a[0],c[0])-x,x-Math.max(a[0],c[0]));
-      const dy = Math.max(0,Math.min(a[1],c[1])-y,y-Math.max(a[1],c[1]));
-      const distance = dx*dx+dy*dy;
-      if (distance < nearest) { floor = f; nearest = distance; }
-    }
-    let distance = Infinity, top, behind = false;
-    for (const {vertices:[a,b]} of walls) {
-      const dx = b[0]-a[0], dy = b[1]-a[1];
-      if (dx && dy) continue;
-      if (dx && (x-a[0])*(x-b[0])>0 || dy && (y-a[1])*(y-b[1])>0) continue;
-      const gap = Math.abs(dx ? y-a[1] : x-a[0]);
-      if (gap < distance || gap === distance && a[2]<top) {
-        distance = gap; top = a[2]; behind = dx*(y-a[1])-dy*(x-a[0])>0;
-      }
-    }
-    if (!behind || top >= floor.vertices[0][2]) continue;
-    if (floors.some(({vertices:[a,,c]}) => a[2]<=top && (x-a[0])*(x-c[0])<=0 &&
-      (y-a[1])*(y-c[1])<=0)) continue;
-    patches.push({...floor,roof:true,vertices:[[xs[i-1],ys[j-1],top],[xs[i],ys[j-1],top],
-      [xs[i],ys[j],top],[xs[i-1],ys[j],top]]});
-  }
-  return patches;
-}
-
-// Fill fully enclosed empty MAP cells from the neighboring roof edge. The
-// flood from the map boundary keeps the district exterior open.
-function enclosedRoofCells(grid,blocks,edgeRoofs) {
-  if (!grid) return [];
-  const {tiles,width,height} = grid;
-  const empty = i => !blocks[tiles[i]&127]?.faces.length;
-  const seen = new Uint8Array(tiles.length), cells = [];
-  function neighbors(i) {
-    const x = i%width, y = Math.floor(i/width);
-    return [x>0 ? i-1 : -1,x+1<width ? i+1 : -1,y>0 ? i-width : -1,y+1<height ? i+width : -1];
-  }
-  for (let i=0; i<tiles.length; i++) {
-    if (seen[i] || !empty(i)) continue;
-    const component = [i], seeds = [], assigned = new Map();
-    let exterior = false;
-    seen[i] = 1;
-    for (let j=0; j<component.length; j++) {
-      const cell = component[j];
-      neighbors(cell).forEach((n,side) => {
-        if (n<0) { exterior = true; return; }
-        if (empty(n)) {
-          if (!seen[n]) { seen[n] = 1; component.push(n); }
-          return;
-        }
-        const tile = tiles[n], id = (tile&127)*4+((tile>>>8)&3);
-        const roof = edgeRoofs[id][side^1];
-        if (roof && !assigned.has(cell)) { assigned.set(cell,roof); seeds.push(cell); }
-      });
-    }
-    if (exterior) continue;
-    for (let j=0; j<seeds.length; j++) {
-      const cell = seeds[j], roof = assigned.get(cell);
-      cells.push({cell,roof});
-      for (const n of neighbors(cell)) if (n>=0 && empty(n) && !assigned.has(n)) {
-        assigned.set(n,roof); seeds.push(n);
-      }
-    }
-  }
-  return cells;
-}
-
 // All world textures share one indexed atlas. Each block variant owns one
 // immutable range of vertices, reused by every visible MAP cell of that type.
 export function districtMesh(district) {
@@ -244,6 +158,7 @@ export function districtMesh(district) {
     return rect;
   }
   const floorMap = pack({width: 320, height: 200, pixels: linearPixels(district.floor.planes)});
+  const turretRects = district.gunViews ? [district.gun.map(pack),district.flash.map(pack)] : [];
   const missileRects = (district.missile ?? []).map(pack);
   const hazardRects = (district.hazardFrames ?? []).map(pack);
   const banks = district.banks.map(bank => bank.map(pack));
@@ -281,40 +196,33 @@ export function districtMesh(district) {
     }
   }
   const vertices = [], surfaceNodes = [], ranges = [], blockLights = [];
-  const edgeRoofs = [];
   for (const block of district.blocks) {
     for (let variant = 0; variant < 4; variant++) {
-      const lights = [], edges = [];
-      edgeRoofs.push(edges);
+      const lights = [];
       blockLights.push(lights);
       const first = vertices.length/12;
-      for (const [faceIndex,face] of block.faces.concat(roofPatches(block,variant,district.flags)).entries()) {
+      for (const [faceIndex,face] of block.faces.entries()) {
         if (face.vertices.length < 3 || face.material >= block.variantStride) continue;
         const node = block.surfaceNodes?.[face.surface] ?? 0;
         if (node < 0) continue;
         const [a,b,c] = face.vertices;
         if (face.floor) {
-          // KFLOOR tile zero is continuous, unmarked road asphalt.
-          const tile = face.roof ? 0 : block.materials[2*(variant*block.variantStride+face.material)+1];
+          // KFLOOR 0–2 are full asphalt tiles. Curb and sidewalk composites start at 3.
+          const tile = block.materials[2*(variant*block.variantStride+face.material)+1];
           const side = Math.sign(c[1]-a[1]);
           if (!side || tile >= 15) continue;
           const rect = [floorMap[0]+tile%5*64,floorMap[1]+Math.floor(tile/5)*64,64,64];
-          const period = face.roof ? 64 : 64 * 2**face.textureScale;
-          const rotation = face.roof ? 0 : face.textureOrientation;
-          if (face.roof) {
-            const roof = {rect,period,rotation,z:a[2]};
-            for (const [side,touches] of [a[0]===0,c[0]===512,a[1]===0,c[1]===512].entries()) {
-              if (touches && (!edges[side] || roof.z<edges[side].z)) edges[side] = roof;
-            }
-          }
+          const period = 64 * 2**face.textureScale;
+          const asphalt = Number(district.districtId === 1 && side > 0 && tile <= 2);
+          const rotation = face.textureOrientation;
           for (let k = 2; k < face.vertices.length; k++) {
             for (const j of [0,k-1,k]) {
               const [vx,vy,vz] = face.vertices[j];
               // 0x447FF dispatches the four rotations in the floor span mapper.
               const u = [vx,vy,-vx,-vy][rotation];
               const v = [vy,-vx,-vy,vx][rotation];
-              vertices.push(vx,vy,vz,u/period,v/period,...rect,0,0,face.roof ? -5 : side > 0 ? -2 : -3);
-              surfaceNodes.push(face.roof ? 0 : node);
+              vertices.push(vx,vy,vz,u/period,v/period,...rect,asphalt,0,side > 0 ? -2 : -3);
+              surfaceNodes.push(node);
             }
           }
           continue;
@@ -365,7 +273,8 @@ export function districtMesh(district) {
               }
             }
           }
-          const flagsAndFace = masked|both|(side*4)|(face.sectioned ? 8 : 0)|((bulbs.length || omniSign) ? 16 : 0)|(faceIndex<<5);
+          const exteriorBack = sides === 1 && !both ? 32 : 0;
+          const flagsAndFace = exteriorBack|masked|both|(side*4)|(face.sectioned ? 8 : 0)|((bulbs.length || omniSign) ? 16 : 0)|(faceIndex<<6);
           for (const j of [0,1,2,0,2,3]) {
             const end = j === 1 || j === 2;
             const u = (reverseUV ? end : !end) ? face.repeats : 0;
@@ -401,20 +310,6 @@ export function districtMesh(district) {
       ranges.push({first, count: vertices.length/12-first});
     }
   }
-  const roofRanges = new Map();
-  for (const {cell,roof} of enclosedRoofCells(district.grid,district.blocks,edgeRoofs)) {
-    if (!roofRanges.has(roof)) {
-      const first = vertices.length/12;
-      for (const [x,y] of [[0,0],[512,0],[512,512],[0,0],[512,512],[0,512]]) {
-        const u = [x,y,-x,-y][roof.rotation], v = [y,-x,-y,x][roof.rotation];
-        vertices.push(x,y,roof.z,u/roof.period,v/roof.period,...roof.rect,0,0,-5);
-        surfaceNodes.push(0);
-      }
-      roofRanges.set(roof,{first,count:6,bounds:{x:256,y:256,z:roof.z,radius:Math.hypot(256,256)},cells:[]});
-    }
-    roofRanges.get(roof).cells.push({x:cell%district.grid.width*512,y:Math.floor(cell/district.grid.width)*512,
-      haloFirst:0,haloCount:0});
-  }
   // 0x2DA48 uses a seven-bit projection shift for actors. Placed sprites
   // use ten at 0x42774, so actor scale 512 gives one world unit per texel.
   function actorSprite(rect,scale,z,offset=[0,0],flip=false) {
@@ -430,13 +325,15 @@ export function districtMesh(district) {
   const hazardRanges = hazardRects.concat(hazardRects.slice(14)).map((rect,i) => {
     if (i===0) return actorSprite(rect,0.5,14);
     if (i<=12) return actorSprite(rect,2,14,district.blastOffsets[i-1]);
-    return actorSprite(rect,0.75,i===13 ? -8 : -16,[0,0],i>=18);
+    return actorSprite(rect,0.75,i===13 ? -8 : district.gunViews ? 0 : -16,[0,0],i>=18);
   });
+  const turretRanges = (district.gunViews ?? []).map(([flash,image,x,y]) =>
+    actorSprite(turretRects[Number(flash)][image],0.75,-28,[x,y]));
   const missileRanges = (district.missileViews ?? []).flatMap(([image,x,y]) =>
     [false,true].map(flip => actorSprite(missileRects[image],0.75,0,[x,y],flip)));
   const blastRanges = [0.75,1,4].flatMap(scale => hazardRects.slice(1,13).map((rect,i) =>
     actorSprite(rect,scale,0,district.blastOffsets[i])));
-  return {atlas, sky, skyIndex, blockLights, ranges, animations,hazardRanges,missileRanges,blastRanges,roofGroups:[...roofRanges.values()],
+  return {atlas, sky, skyIndex, blockLights, ranges, animations,hazardRanges,turretRanges,missileRanges,blastRanges,
     vertices:new Float32Array(vertices), surfaceNodes:Uint32Array.from(surfaceNodes)};
 }
 

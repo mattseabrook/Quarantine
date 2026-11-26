@@ -11,6 +11,7 @@ const cabinYawLimit = 100*Math.PI/180;
 const cabinPitchLimit = 45*Math.PI/180;
 const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
+const demoRateAdjustedStep = index => index > 0 ? Math.max(1,Math.trunc(20*index/ticksPerSecond)) : 0;
 const fallbackBounds = Object.freeze({left:-cabBody.width/2,right:cabBody.width/2,
   back:-cabBody.length/2,front:cabBody.length/2,top:cabBody.base-cabBody.height,bottom:cabBody.base});
 
@@ -18,17 +19,19 @@ const fallbackBounds = Object.freeze({left:-cabBody.width/2,right:cabBody.width/
 export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
     hazards:{mines:new Map(),guns:new Map(),shots:new Set(),phase:0,column:0,randomIndex:0},health:400,mineSound:null,
-    supportZ:start.z, fallSpeed:0, hover:0, landingStep:0, landingDelay:0, seatOffset:0,
+    supportZ:start.z, fallSpeed:0, hover:0, landingCounter:0, landingStep:0, landingDelay:0, seatOffset:0,
+    demo:Boolean(start.demo),
     wayfinderPhase:0, headlights:true, streetContact:null,
     speed: 0, velocity: null, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
     camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
     chasePitch: null, chaseFloorLook: 0, chaseDistance: chaseRange.middle};
 }
 
-export function startHover(car) {
+export function startHover(car,power=32) {
   if (car.hover) return;
   car.hover = -1;
-  car.fallSpeed = 32 << 4;
+  car.fallSpeed = power << 4;
+  car.landingCounter = car.demo ? demoRateAdjustedStep(power >> 3) : 0;
 }
 
 function chaseLift(distance, centerZ, bottom) {
@@ -191,6 +194,36 @@ function sweepCab(car,district,dx,dy) {
     16*bearing(dy,dx,district.start.mapDisplay.bearings) :
     Math.round(Math.atan2(dx,dy)*2880/Math.PI);
   const endpoints = [];
+  if (district.start.demo) {
+    car.supportZ = support; // 0x347EE samples only the cell under the cab origin.
+    // QDEMO builds DS:D4AC[i] as trunc(20*i/rate), with a minimum of one.
+    const step = () => demoRateAdjustedStep(car.fallSpeed >> 6);
+    if (car.hover < 0) {
+      car.z -= step();
+      car.fallSpeed -= 12 << 4;
+      if (car.fallSpeed < 0) { car.hover = 1; car.fallSpeed = 0; }
+    } else if (car.hover > 0) {
+      car.z += step();
+      if (car.fallSpeed < (48 << 4)) car.fallSpeed += 12 << 4;
+      if (car.z >= support) {
+        car.z = support;
+        car.hover = 0;
+        car.landingCounter--;
+        if (car.landingCounter > 0) {
+          car.fallSpeed = (car.landingCounter*2) << 4;
+          if (!car.landingStep) car.landingStep = 1;
+        }
+      }
+    } else if (car.z < support) {
+      car.fallSpeed += 10 << 4;
+      car.z = Math.min(support,car.z+step());
+      if (car.z === support) car.fallSpeed = 0;
+    } else {
+      car.z = support;
+      car.fallSpeed = 0;
+    }
+    return;
+  }
   for (const offset of [-400,400,-208,208,0]) {
     const heading = travel+offset;
     const x = Math.floor(car.x+dx)+(120*sine(table,heading)>>11);
@@ -301,13 +334,15 @@ export function driveTick(car, district, keys) {
   const offsets = district.start[car.seatEffect ?? 'landingOffsets'];
   car.seatOffset = 0;
   if (car.landingStep && offsets) {
-    car.seatOffset = offsets[car.landingStep];
-    if (--car.landingDelay < 0) {
+    // QDEMO 0x34EE6 applies the signed displacement to player Z every tick.
+    if (car.demo) car.z += offsets[car.landingStep];
+    else car.seatOffset = offsets[car.landingStep];
+    if (car.demo || --car.landingDelay < 0) {
       car.landingStep++;
       if (offsets[car.landingStep] === 99 || car.landingStep >= offsets.length) {
         car.landingStep = 0; car.seatEffect = null;
       }
-      else car.landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
+      else if (!car.demo) car.landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
     }
   }
   const heading = car.angle+(car.yawSlip>>2);

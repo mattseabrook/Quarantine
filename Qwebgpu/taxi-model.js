@@ -1,4 +1,5 @@
 import {Box3, Matrix3, Matrix4, Vector3} from './vendor/three/three.core.js';
+import {uploadBitmap} from './hd-images.js';
 import {cabBody,rideHeight} from './cab-dimensions.js';
 
 // Model-space metres in the supplied GLB. The wheel is at (+0.42, 1.09, +0.80)
@@ -133,7 +134,9 @@ function readGeometry(gltf, binary, monitor, cabRatio) {
     ],(vertexCount+i)*16));
     indices.set([vertexCount,vertexCount+1,vertexCount+2,vertexCount,vertexCount+2,vertexCount+3],indexCount);
     draws.push({first:indexCount,count:6,material,center:fit(center.x,center.y,z)});
-    return {vertices,indices,draws};
+    const caseCenter = fit((low.x+high.x)/2,(low.y+high.y)/2,z);
+    const caseSize = [(high.x-low.x)*scale*cabRatio,(high.y-low.y)*scale*cabRatio];
+    return {vertices,indices,draws,caseCenter,caseSize,screenNormal:normal};
   }
   // Uniformly fit the authored body proportions to the retail support span.
   const scale = cabBody.length/(high.z-low.z), midX = (low.x+high.x)/2, midZ = (low.z+high.z)/2;
@@ -236,7 +239,7 @@ async function uploadModel(device,materialLayout,url,monitor = false,cabRatio = 
         const levels = 1+Math.floor(Math.log2(Math.max(bitmap.width,bitmap.height)));
         const tex = texture({label:v.name,size:[bitmap.width,bitmap.height],format,mipLevelCount:levels,
           usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT});
-        device.queue.copyExternalImageToTexture({source:bitmap},{texture:tex},[bitmap.width,bitmap.height]);
+        uploadBitmap(device,bitmap,{texture:tex});
         const pipeline = pipelines.get(format), encoder = device.createCommandEncoder();
         let previous = tex.createView({baseMipLevel:0,mipLevelCount:1});
         for (let level=1; level<levels; level++) {
@@ -277,7 +280,7 @@ async function uploadModel(device,materialLayout,url,monitor = false,cabRatio = 
     const opaque = [], glass = [];
     for (const d of draws) (gltf.materials[d.material].alphaMode === 'BLEND' ? glass : opaque).push(d);
     opaque.sort((a,b) => a.material-b.material);
-    return {cabRatio:geometry.cabRatio,eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
+    return {caseCenter:geometry.caseCenter,caseSize:geometry.caseSize,screenNormal:geometry.screenNormal,cabRatio:geometry.cabRatio,eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
       const parts = transparent ? glass : opaque;
       if (transparent) {
         for (const d of parts) d.depth = d.center.reduce((sum,x,i) => sum+x*direction[i],0);

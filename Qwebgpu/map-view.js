@@ -140,7 +140,7 @@ export function cockpitWayfinder(canvas,wayfinder,district,crt = false) {
     ctx.putImageData(image,0,0);
     canvas.setAttribute('aria-label',bay ?
       'Wayfinder, '+settings.bayNames[type]+', '+digits.slice(0,2)+'.'+digits.slice(2) : 'Wayfinder, no destination');
-    return true;
+    return image;
   };
 }
 

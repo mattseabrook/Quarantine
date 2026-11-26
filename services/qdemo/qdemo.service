@@ -1,0 +1,12 @@
+[Unit]
+Description=Qwebgpu shareware demo
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/lib/qdemo/server.py /opt/repos/Lakeshore-Technical/qdemo
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

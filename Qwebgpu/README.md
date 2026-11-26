@@ -36,15 +36,27 @@ modify the DOS executable or its disassembly.
 
 Set `"demo": true` to use the shareware files from `Qwebgpu/QDEMO`
 (linked to `DEMO/`); `"demo": false` retains the retail SKIPIT path.
-Demo mode shows `QTITLE.GIF` while loading the demo Core, then enters the
-same native driving loop as SKIPIT using demo data. The shared controls,
-settings, camera, map, wayfinder and available sound effects apply; J also
-jumps. W drives rather than selecting the original demo's low-resolution
-mode; use minus and plus for resolution. Escape returns to the title.
+Demo mode plays `lakeshore.mp4` first while loading the Core assets in the
+background. The red `QTITLE.GIF` screen shows the current filename and the
+percentage of startup jobs completed before entering the
+same native driving loop as SKIPIT using demo data. The demo uses WASD or the arrow keys to drive and J or Z for its power-60 jump.
+Both modes use the same world-space asphalt on Core road tiles 0–2, with color sampled from the original unmarked pavement. Wear, aggregate and narrow cracks vary across cell boundaries. Chase view displays the live navigation CRT face-on at the lower right.
+The demo starts at full display resolution. Minus and plus step between 320×200 and monitor resolution. P pauses until the
+next key press. Escape opens the
+Y/N exit prompt. Y plays the original credits for 180 retraces and N
+resumes driving. The title and credits use the demo's nine-unit DAC fade.
+The existing night cubemap uses the purple from SKIPIT Core palette entry
+81 (six-bit DAC 8, 4, 10), independently of the optional HD skyline key.
 The map uses the demo overlays' palette without the still-unrecovered palette
-overrides. Demo engine audio, actors, hazards, weapons, fares and the
+overrides. Demo Core loads the original mine, wall gun, muzzle flash, tracer and missile assets. Fixed hazards use QDEMO’s four-phase scanner and its own placement and sprite tables. Demo engine audio, other actors, player weapons, fares and the
 original menu are not yet ported; demo shading and other renderer differences
 also need work. This is not yet demo parity.
+The demo jump and gravity updates use QDEMO's rate-adjusted movement table
+(`floor(20*i/rate)`, minimum one for nonzero entries), evaluated at the browser's
+fixed 35 Hz step; retail uses a different vertical-motion path.
+The power-60 jump also seeds QDEMO's rate-adjusted landing counter; the browser
+consumes that counter at touchdown and preserves its residual power. The queued
+QDEMO landing sound remains part of the unported audio path.
 The native path does not run an executable or use an emulator, DOS4GW or
 retail game files. [Driving comparison](../disassembly/QDEMO/README.md#shared-driving-code).
 The demo path ignores `developerMode` and `copyProtection`; those settings
@@ -74,6 +86,21 @@ before publishing. A generic static server, including the example above,
 does not enforce these restrictions. This is not a distribution license or a
 complete public-deployment audit. The included service only accepts
 private-network clients; restart it after server changes.
+
+The OVH deployment at `https://www.lakeshoretechnical.com/qdemo/` uses the
+separate loopback-only `qdemo.service` and an nginx reverse proxy. Its
+`QDEMO` directory contains the demo files; `MS-DOS`, the retail graphics
+export and the retail `KSKY.png` replacement are excluded. Only the
+demo-specific HD replacements and shared taxi, monitor, plate and night
+cubemap are served. Deployment is a snapshot, not an automatic sync from
+this repository. Run `./deploy.sh` from the repository to deploy manually.
+It reads the SSH username, password and IP from the first three lines of
+`~/.ovhcloud`, requires a previously trusted SSH host key, and expects the
+nginx route and enabled user service to be installed already. It forces demo
+mode in the deployed configuration without changing the local config, copies
+only allowlisted HD assets, restarts the service, and retains the previous
+snapshot outside the public web root. The service files are in
+`services/qdemo/`.
 
 ### HD IMG replacements
 
@@ -251,9 +278,7 @@ and use directional EMISSILE sprites. A head-on missile impact follows the cab f
 its existing wall sweep for projectile obstruction. The complete damage, death,
 shared actor scheduling and other weapon paths remain open.
 
-Chase cameras can see caps tiled with unmarked road asphalt over the backs of rectangular
-facades and adjoining enclosed empty cells. These surfaces live in the world
-mesh only. The hover light is evaluated on the receiving floor.
+Chase cameras draw the backs of facades and retain the open tops of the original map geometry. The hover light is evaluated on the receiving floor.
 
 SKIPIT loads per-district collision and trigger tables and initializes a
 128-byte district state array with district-specific values at `0x45340`.

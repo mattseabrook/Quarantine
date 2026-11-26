@@ -1,3 +1,5 @@
+import {uploadBitmap} from './hd-images.js';
+
 let stars;
 const resources = new WeakMap();
 
@@ -87,9 +89,8 @@ export function skyResources(device, bitmap) {
   if (validFaceSize) {
     // Atlas cells are in WebGPU face order: +X, -X, +Y, -Y, +Z, -Z.
     for (let face = 0; face < 6; face++) {
-      device.queue.copyExternalImageToTexture({source: bitmap,
-        origin: [size * (face % 3), size * Math.floor(face / 3)]},
-      {texture: cube, origin: [0, 0, face]}, [size, size]);
+      const x = size * (face % 3), y = size * Math.floor(face / 3);
+      uploadBitmap(device,bitmap,{texture:cube,origin:[0,0,face]},size,size,x,y);
     }
   }
   const noise = device.createTexture({size: [noiseSize, noiseSize, noiseSize], dimension: '3d', format: 'r8unorm',

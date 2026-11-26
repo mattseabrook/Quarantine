@@ -23,7 +23,8 @@ fn cabDirection(local:vec3f) -> vec3f {
   let along = dot(d.xy,view.axes.xy);
   let depth = along*view.axes.z+d.z*view.axes.w;
   let screen = vec2f(dot(d.xy,vec2f(-view.axes.y,view.axes.x)),along*view.axes.w-d.z*view.axes.z);
-  return TaxiVertex(vec4f(screen*view.scale.xy,view.backdrop.x,depth),uv,view.player.xyz+offset,
+  let projection = select(1.0,depth,view.cabSeat.w != 0.0);
+  return TaxiVertex(vec4f(screen*view.scale.xy*projection,view.backdrop.x,depth),uv,view.player.xyz+offset,
                     cabDirection(normal),vec4f(cabDirection(tangent.xyz),tangent.w),metalUV,normalUV);
 }
 

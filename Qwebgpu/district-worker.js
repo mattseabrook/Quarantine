@@ -282,12 +282,12 @@ async function prepare(part, files, start) {
   // MAP-indexed directory to the renderer, lights, diagnostics and physics.
   const empty = {faces:[],wallRuns:[],placements:[],materials:new Uint8Array(),variantStride:0};
   const blocks = start.blockRecords.map(record => records[record] ?? empty);
-  const [city,blast,gun,tracer,missile] = start.demo ? [[],[],[],[],[]] : await Promise.all(['CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR','EMISSILE.SPR'].map(async name => {
+  const [city,blast,gun,tracer,missile,flash] = await Promise.all(['CITYOBJ.SPR','BLAMMOG.SPR','CITYGUN.SPR','ETRACERS.SPR','EMISSILE.SPR',...(start.demo ? ['MFLASH.SPR'] : [])].map(async name => {
     const raw = await bytes(name);
     return readSpriteBank(raw,raw[0],{planar:false});
   }));
   const grid = readMap(map,start.map);
-  const mesh = districtMesh({grid,missile,missileViews:start.actorScan?.missileViews,blastOffsets:start.actorScan?.blastOffsets,hazardFrames:start.demo ? [] : [city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
+  const mesh = districtMesh({grid,gun,flash,gunViews:start.actorScan?.gunViews,missile,missileViews:start.actorScan?.missileViews,blastOffsets:start.actorScan?.blastOffsets,hazardFrames:[city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
     bankNames:start.wallBanks,panorama:start.panorama,flatSkyIndex});
   const wallDepth = wallDepthLayers(blocks,grid,flags);
   // The CPU driver only needs vertical segments. Send flat collision arrays,

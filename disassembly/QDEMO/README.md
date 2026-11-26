@@ -15,29 +15,68 @@ executable against SHA-256
 
 ## Scope and limitations
 
-All executable bytes are explicit assembly source. The MZ stub, LE loader and
-fixup tables are in [`src/prefix.asm`](src/prefix.asm), the first LE object is
-in [`src/code.asm`](src/code.asm), and the rest of the file is in
-[`src/suffix.asm`](src/suffix.asm). The code section uses virtual origin
-`0x10000`; instruction comments give that address and the original bytes.
-The LE entry point is object 1 offset `0x3cf50` (address `0x4cf50`).
-Identified routines can be extracted from the code section into
-[`src/functions/`](src/functions/), while remaining in the executable layout.
+The source keeps the MZ stub and LE tables in `src/prefix.asm`. Object 1
+starts at file offset `0x22200` and virtual address `0x10000`. Object 2 starts
+at file offset `0x67200` and virtual address `0x60000`. Its mapped pages
+contain strings, initialized tables and executable VGA routines. Its virtual
+size also includes uninitialized memory. The entry point is `0x4CF50`.
 
-A Ghidra raw-binary analysis of object 1, seeded at that entry point, found
-31,256 instructions and 487 provisional function entries. Of those
-instructions, 27,983 are represented as NASM mnemonics; 3,273 use exact
-byte directives with disassembly comments where NASM rejected or changed the
-encoding, or the decoders disagreed. Function labels are address-based and
-analyzer boundaries are tentative. Subsequent manual analysis identified the
-413-instruction driving update in a previously unclassified span. Its
-instruction-level source retains exact opcode directives where the encoding
-is ambiguous. Other unclassified bytes, including any code the analyzer
-missed, remain data. The analysis did not apply LE relocations or recover
-object 2 code; it is not a complete semantic disassembly.
+The address comments use the preferred LE bases. For example, the immediate
+at `0x2FA62` is an offset into object 2. Its fixup resolves to
+`0x60000 + 0x23DC`, the string `sky.gif`. Inter-object calls with a zero
+relative displacement on disk get their target from an LE rel32 fixup.
+The source records that target beside the opcode. In particular, the
+calls during startup at `0x112F1` and during the game loop at `0x115B0`
+enter object 2's planar VGA initialization and page rotation routines.
 
-The byte-for-byte result establishes file identity, not browser gameplay
-parity. Porting the demo behavior to Qwebgpu is separate work.
+The listing follows direct control flow from the entry candidates and
+object-1 addresses referenced by the loader, and follows relative-call
+fixups into object 2. It represents 76,611 candidate instruction starts
+across the two objects. Interior branch destinations, callbacks and jump
+table entries can all be address-taken. An address label alone establishes
+neither a function boundary nor the purpose of a routine. Unclassified
+spans and instructions with ambiguous encodings retain explicit bytes.
+
+The [function sources](src/functions/) include demo-specific traces and
+counterparts identified by comparing the ordered instructions and operands
+of reachable blocks with the named SKIPIT routines. Retail comparisons
+ignore relocated addresses. Their comments identify the corresponding
+retail routine and distinguish its evidence from demo-specific observations.
+Indirect dispatch and the behaviors of unnamed routines still need analysis.
+
+## Sky, keyboard and exit sequence
+
+* [Shared sprite loading](src/functions/resource_io/load_shared_sprite_assets.asm)
+  calls [the sky loader](src/functions/graphics/load_demo_sky.asm) at
+  `0x30518`. The latter supplies a 768-byte scratch palette, the filename and
+  an indexed destination buffer to the GIF reader. It passes `0x1F40` to
+  [the plane converter](src/functions/graphics/split_pixels_into_four_planes.asm).
+  Four passes at stride four consume the first 32,000 pixels, or 100 rows.
+  The art export in the repository root preserves the complete 320 × 200 GIF.
+* [The driving keyboard handler](src/functions/runtime/handle_driving_action_keys.asm)
+  consumes scan codes via the array at `DS:FB64`. Q and W install different
+  raster callbacks. The normal page copier iterates over four planes and
+  the low-detail copier selects two pairs. J (scan code 0x24) checks the
+  active-hover word at `DS:114B2`, sets power to 60 at `DS:114CE`, selects
+  ascent at `DS:114D6` and copies the rate-adjusted table entry at `DS:D4BA`
+  into the landing counter. [Vertical motion](src/functions/runtime/update_player_vertical_motion.asm)
+  indexes `DS:D4AC` by power shifted right two, uses
+  `max(1, floor(20 * index / measuredRate))` for nonzero entries, and reduces
+  power by 12 each ascent tick. The J handler loads `DS:D4BA` (`D4AC[7]`)
+  into the landing counter at `DS:114D4`; touchdown consumes one count and a
+  positive remainder queues sound selector 4 if `DS:763C` is clear. Qwebgpu
+  evaluates the movement and landing tables at its fixed 35 Hz step and models
+  the counter/residual power; the sound queue remains unported. This is a
+  QDEMO-specific formula, not the retail vertical path.
+* Escape requests state 2 at `0x34B21` when the view-state word is zero.
+  [Prompt input](src/functions/runtime/handle_pause_or_exit_prompt.asm)
+  consumes Y or N. Y sets the quit flag at `DS:7C4E`; N clears the prompt
+  and resumes. The string pointer at `DS:8D0C` selects the Y/N question.
+  [The main loop](src/functions/runtime/game_main.asm) displays
+  `qcredit2.gif`, copies it to three VGA pages, fades in the palette,
+  waits 180 retraces, then fades out. The DAC increment at `DS:792C` is 9.
+* Qwebgpu uses the existing night cubemap and the retail Core VGA tint as an HD rendering choice. This and the HD rendering path are intentional
+  visual differences from running the DOS demo.
 
 ## Core resource lookup
 
@@ -84,11 +123,12 @@ word at `DS:792A`, QDEMO also requires `DS:114E6 == 0` before calling
 `0x2AA94` and `0x2ACD0` at `0x1B362` and `0x1B367`. In the corresponding
 retail path, the word at `DS:1391C` is tested before its two contact calls
 at `0x1B2E5` and `0x1B2EA`, without that additional check. The demo initializer
-sets `DS:114E6` to zero; its other writers and meaning remain to be traced.
+sets `DS:114E6` to zero. No other direct references to this word appear in the
+reconstructed QDEMO sources, so the extra check has no demonstrated runtime
+effect after initialization; indirect writes or aliases are not ruled out.
 The routines are therefore not proven interchangeable in every state. The
 demo's supplied keyboard reference uses J for jump; the browser's retail
-path uses Z, and its shared loop also accepts J in demo mode. The demo input
-handler still needs tracing.
+path uses Z, and the demo path uses J and its own jump power. The per-key branch is traced above.
 
 The demo map uses scale and divisor words at `DS:61D4`, district-one
 offsets at `DS:61E8`, heading icons at `DS:6204`, arrow positions at
@@ -127,3 +167,19 @@ Across the supplied directories, 135 filenames are common and 77 of those
 files are byte-identical. Common names alone do not prove identical content.
 The above comparison does not yet cover the full renderer, actor simulation,
 menus, audio, input handling, or all asset formats.
+
+## Downtown Core fixed hazards
+
+The gameplay dispatcher at `0x29E50` increments the phase modulo four. Its jump table at CS:19E40 sends phase zero to the fixed block scan and phase one to the MAP marker scan. The two other phases call `0x2A6AC` and `0x2A4F0`. Only the first two consume a perimeter column in this dispatcher. The selector at `0x2A258` takes its columns from DS:682C and its heading-relative XY pairs from DS:67DC.
+
+| Source in QDEMO.EXE | Behavior |
+| --- | --- |
+| `0x29ED0`, `0x2A1DC` | An occupied cell (low-byte bit 7) is skipped. In Core, blocks 102–105 and 117 request a class-1 gun. Blocks 20–23 and 123 request a class-9 launcher. |
+| `0x29F8C`, `0x20104`, `0x20130` | MAP markers 1–3 use the same mine initializer and lane selectors 0, 1 and 2. The block's road class comes from DS:6898. The idle mine draws CITYOBJ frame 12 at `0x200EB`. |
+| `0x2000C` | Mine contact enters explosion state 3, quadruples scale, applies 4 damage and calls the hover routine with power 56. |
+| `0x212E4`, `0x20E20` | The four wall positions have headings 90, 270, 0 and 180 degrees. Block 117 is centered and bypasses the sweep setup. The sweep reads DS:5CDC. The view tables at DS:5B88 and DS:5AC8 select CITYGUN and MFLASH descriptors by viewing angle and burst parity. |
+| `0x214B0`, `0x2190C` | The wall shot uses a 30-update lifetime and checks for a cab hit before its wall check. Its nine directional descriptors at DS:5BE8 reference ETRACERS. The hit path passes 3 in BX to the damage wrapper at `0x34F2C`. |
+| `0x22A50`, `0x228A8` | The launcher starts with counter 4. A successful shot toggles the port. DS:5DE8 provides ten (X, Y, heading) records. Block 123 takes the last pair. All pairs reload from DS:D2D8 (duration-table entry 30). |
+| `0x23694`, `0x23830`, `0x2D624` | The missile checks obstruction before cab overlap, applies 15 damage on a cab hit and selects the enemy missile view table at DS:6BC0. |
+
+These callbacks establish street mines, missiles and gun tracers. They do not establish a separate laser weapon or the player's available weapon loadout.

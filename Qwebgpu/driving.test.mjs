@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {driveTick, newDriver} from './driving.js';
+import {driveTick, newDriver, startHover} from './driving.js';
 
 function district(wall) {
   const sine = Array.from({length:1441},(_,i) => Math.round(2048*Math.sin(i*Math.PI/2880)));
@@ -82,4 +82,30 @@ test('floor support uses the cab footprint instead of distant probes', () => {
   car.y = 480;
   driveTick(car,world,new Set());
   assert.equal(car.z,-10);
+});
+
+test('QDEMO jump ascent uses its 20-unit rate-adjustment table', () => {
+  const world = district(), car = newDriver(world);
+  world.start.demo = true;
+  car.hover = -1;
+  car.fallSpeed = 60 << 4;
+  driveTick(car,world,new Set());
+  assert.equal(car.z,-8);
+  assert.equal(car.fallSpeed,48 << 4);
+  assert.equal(car.hover,-1);
+});
+
+test('QDEMO jump consumes its rate-adjusted landing counter', () => {
+  const world = district();
+  world.start.demo = true;
+  const car = newDriver(world);
+  startHover(car,60);
+  assert.equal(car.landingCounter,4);
+  car.hover = 1;
+  car.z = 0;
+  car.fallSpeed = 48 << 4;
+  driveTick(car,world,new Set());
+  assert.equal(car.hover,0);
+  assert.equal(car.landingCounter,3);
+  assert.equal(car.fallSpeed,6 << 4);
 });

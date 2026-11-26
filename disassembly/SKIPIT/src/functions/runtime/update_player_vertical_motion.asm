@@ -1,6 +1,8 @@
 ; Runtime address: 000316C0
 ; Semantic name: update_player_vertical_motion
 ; Evidence: Queries supporting floors and ceilings, integrates falling and hover motion, and handles landing state.
+; Unlike the compact QDEMO routine, this retail path samples cab-footprint support,
+; includes district-specific lift handling, and applies its own landing effects.
 
 %macro emit_update_player_vertical_motion_part_00 0
     %%fragment_start:

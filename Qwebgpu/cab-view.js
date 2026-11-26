@@ -17,7 +17,7 @@ struct View {
   eye: vec4f, axes: vec4f, scale: vec4f, outputSize: vec4f,
   sky: vec4f, player: vec4f, settings: vec4f,
   ambient: vec4f, backdrop: vec4f, hd: vec4u, skyTint: vec4f,
-  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,6>, cabSeat: vec4f
+  headlamps: array<vec4f,2>, textureEffects: vec4f, taillamps: array<vec4f,6>, cabSeat: vec4f, skylineKey: vec4f
 };
 fn skyRay(uv: vec2f) -> vec3f {
   let offset = (2.0*uv-1.0)/view.scale.xy;
@@ -113,13 +113,15 @@ struct Surface {
   out.height = point.z+cell.z;
   out.worldPos = vec3f(xy,z+view.eye.z);
   out.normalAndLamp = vec4f(0.0);
+  if (wall.z == -2.0) { out.normalAndLamp.w = -wall.x; }
   if (placed) { out.normalAndLamp.w = wall.y; }
-  if (wall.z == -2.0 || wall.z == -5.0) { out.normalAndLamp.z = -1.0; }
+  if (wall.z == -2.0) { out.normalAndLamp.z = -1.0; }
   if (wall.z == -3.0) { out.normalAndLamp.z = select(1.0,-1.0,z > 0.0); }
-  out.shadeDivisor = 110.0;
+  out.shadeDivisor = select(110.0,view.backdrop.y,view.backdrop.y > 0.0);
   if (wall.z >= 0.0) {
     let flagsAndFace = u32(wall.z);
     var flags = flagsAndFace & 31u;
+    if ((flagsAndFace & 32u) != 0u && view.player.w != 0.0) { flags |= 2u; }
     if (rect.x < 0.0) {
       let frame = wallFrames[u32(-1.0-rect.x)];
       out.rect = frame.rect;
@@ -132,7 +134,7 @@ struct Surface {
     let layers = wallDepth[tile];
     if (layers != 0u) {
       // Resolve depth ties without moving vertices or changing the UVs.
-      let bias = (view.backdrop.x/12.0)*0.001*f32(wallDepth[layers+(flagsAndFace>>5u)]);
+      let bias = (view.backdrop.x/12.0)*0.001*f32(wallDepth[layers+(flagsAndFace>>6u)]);
       out.pos.z += min(max(depth-out.pos.z,0.0),bias);
     }
     let normal = vec2f(wall.y,-wall.x)*inverseSqrt(max(1.0,dot(wall.xy,wall.xy)));
@@ -142,7 +144,7 @@ struct Surface {
     let difference = abs(angle-floor(degrees(view.eye.w)));
     var delta = abs(difference-360.0*round(difference/360.0));
     if (delta > 120.0) { delta = 180.0-delta; }
-    out.shadeDivisor -= floor(delta*0.5);
+    if (view.backdrop.y == 0.0) { out.shadeDivisor -= floor(delta*0.5); }
   }
   return out;
 }
@@ -217,9 +219,31 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
   if (masked && ink == 0u) { return fallback; }
   return textureLoad(colors,vec2i(i32(ink),band),0).rgb;
 }
+fn pavementHash(cell:vec2i) -> f32 {
+  let p = bitcast<vec2u>(cell);
+  var h = p.x*0x9e3779b9u + p.y*0x85ebca6bu;
+  h = (h ^ (h >> 16u))*0x7feb352du;
+  return f32(h ^ (h >> 15u))/4294967296.0;
+}
+fn pavementNoise(p:vec2f) -> f32 {
+  let cell = vec2i(floor(p));
+  let t = smoothstep(vec2f(0),vec2f(1),fract(p));
+  return mix(mix(pavementHash(cell),pavementHash(cell+vec2i(1,0)),t.x),
+             mix(pavementHash(cell+vec2i(0,1)),pavementHash(cell+vec2i(1,1)),t.x),t.y);
+}
+fn asphalt(p:vec2f, footprint:f32) -> vec3f {
+  let wear = pavementNoise(p/124.0);
+  let warp = vec2f(pavementNoise(p/19.0),pavementNoise(p/27.0+vec2f(31.0)));
+  let seam = abs(pavementNoise(p/53.0+warp*0.22)-0.5);
+  let width = max(0.009,min(0.3,footprint/53.0));
+  let crack = (1.0-smoothstep(0.0,width,seam))*(0.009/width)*smoothstep(0.36,0.68,wear);
+  let aggregate = (pavementNoise(p*2.3)-0.5)*(1.0-smoothstep(0.2,0.8,footprint));
+  let base = vec3f(0.12);
+  return base*max(0.18,0.77+0.27*wear+aggregate*0.55-0.58*crack);
+}
 @fragment fn material(in: Surface) -> @location(0) vec4f {
+  let footprint = length(fwidth(in.worldPos.xy));
   if (in.flags == -2.0 && in.height <= view.eye.z) { discard; }
-  if (in.flags == -5.0 && (view.player.w == 0.0 || in.height <= view.eye.z)) { discard; }
   if (in.flags == -3.0 && view.player.w == 0.0 && in.height >= view.eye.z) { discard; }
   var uv = in.uv;
   if (in.flags >= 0.0 && in.facing > 0.0) { uv.x = -uv.x; }
@@ -268,12 +292,16 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
     }
   }
   var ink = textureLoad(colors,vec2i(i32(index),0),0).rgb;
-  if ((in.flags == -2.0 || in.flags == -3.0 || in.flags == -5.0) && textureDimensions(hdFloor).x > 1u) {
+  if ((in.flags == -2.0 || in.flags == -3.0) && textureDimensions(hdFloor).x > 1u) {
     // The first atlas item is the original 320x200 floor tile sheet.
     let pixel = (in.rect.xy + fract(uv)*in.rect.zw)/vec2f(320,200)*vec2f(textureDimensions(hdFloor));
     let replacement = textureLoad(hdFloor,vec2i(pixel),0).rgb;
     surface = clamp(replacement + surface - ink,vec3f(0),vec3f(1));
     ink = replacement;
+  }
+  if (in.normalAndLamp.w == -1.0 && in.flags == -2.0) {
+    ink = asphalt(in.worldPos.xy,footprint);
+    surface = ink*(1.0-0.65*f32(band)/63.0);
   }
   let irradiance = lightAt(in.worldPos,in.normalAndLamp.xyz,in.flags != -4.0);
   var lit = surface*sqrt(irradiance);
@@ -352,7 +380,7 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
   let skyline = textureLoad(hdSky,pixel,0);
   var opacity = skyline.a;
   if (view.hd.w != 0u) {
-    let diff = abs(skyline.rgb-view.skyTint.rgb);
+    let diff = abs(skyline.rgb-view.skylineKey.rgb);
     let distanceFromKey = max(diff.r,max(diff.g,diff.b));
     opacity *= smoothstep(12.0/255.0,30.0/255.0,distanceFromKey);
   }
@@ -664,8 +692,9 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const hazardGroups = mesh.hazardRanges.map(range => ({...range,cells:[]}));
   const missileGroups = mesh.missileRanges.map(range => ({...range,cells:[]}));
   const blastGroups = mesh.blastRanges.map(range => ({...range,cells:[]}));
-  const actors = [...hazardGroups,...missileGroups,...blastGroups];
-  groups.push(...mesh.roofGroups,...actors);
+  const turretGroups = mesh.turretRanges.map(range => ({...range,cells:[]}));
+  const actors = [...turretGroups,...hazardGroups,...missileGroups,...blastGroups];
+  groups.push(...actors);
   const instanceData = new Float32Array((district.tiles.length+40)*3), haloData = new Float32Array(halos.length);
   const instances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
@@ -680,7 +709,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const reflectionInstances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const reflectionHalos = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionData = new Float32Array(instanceData.length), reflectionHaloData = new Float32Array(haloData.length);
-  const uniforms = new Float32Array(84), reflectionUniforms = new Float32Array(84);
+  const uniforms = new Float32Array(88), reflectionUniforms = new Float32Array(88);
   const headlamps = session.taxi?.headlamps ?? [[-0.36*cabBody.width,cabBody.length/2,8],[0.36*cabBody.width,cabBody.length/2,8]];
   const taillamps = session.taxi?.taillamps?.length === 6 ? session.taxi.taillamps :
     [-0.36,0.36].flatMap(side => [6,8,10].map(down => [side*cabBody.width,-cabBody.length/2,down]));
@@ -713,10 +742,13 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     if (changed) uploadWallFrames();
   }
   const paletteRGB = index => Array.from(rgba.subarray(index*4,index*4+3),byte => byte/255);
-  const skyRGB = key ?? paletteRGB(mesh.skyIndex);
+  if (key) uniforms.set(key,84);
+  // SKIPIT Core palette 81, expanded from the six-bit gameplay DAC.
+  const skyRGB = session.demo ? [32/255,16/255,40/255] : key ?? paletteRGB(mesh.skyIndex);
   const peak = Math.max(...skyRGB);
   // Use the sky's chroma for ambient light while keeping the street exposure.
   uniforms.set(skyRGB.map(c => 0.28*(peak ? (c/peak)**2 : 1)),28);
+  uniforms[33] = district.start.shadeDistance ?? 0;
   uniforms[35] = Number(district.start.panorama);
   uniforms.set(key || peak ? skyRGB : [0.11,0.11,0.17],40);
   const viewBuffer = buffer(uniforms.byteLength,GPUBufferUsage.UNIFORM);
@@ -742,6 +774,11 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   ];
   const reflectionGroup = device.createBindGroup({layout:bindLayout,entries:[
     ...bindings.map(entry => entry.binding === 0 ? {binding:0,resource:{buffer:reflectionBuffer}} : entry),
+    {binding:12,resource:emptyCloud.createView()},{binding:15,resource:sky.cube}]});
+  const monitorUniforms = new Float32Array(uniforms.length);
+  const monitorBuffer = buffer(uniforms.byteLength,GPUBufferUsage.UNIFORM);
+  const monitorGroup = device.createBindGroup({layout:bindLayout,entries:[
+    ...bindings.map(entry => entry.binding === 0 ? {binding:0,resource:{buffer:monitorBuffer}} : entry),
     {binding:12,resource:emptyCloud.createView()},{binding:15,resource:sky.cube}]});
   let reflectionFace = 0, reflectionRate = -1, reflectionPending = 0, nextReflection = 0;
 
@@ -785,7 +822,9 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     uniforms[32] = 0.5;
     for (const group of actors) group.cells.length = 0;
     for (const mine of car.hazards.mines.values()) hazardGroups[mine.frame+1].cells.push(mine);
-    for (const gun of car.hazards.guns.values()) if (gun.launcher===undefined) hazardGroups[13].cells.push(gun);
+    for (const gun of car.hazards.guns.values()) if (gun.launcher===undefined) {
+      (turretGroups[gun.image] ?? hazardGroups[13]).cells.push(gun);
+    }
     for (const shot of car.hazards.shots) {
       if (shot.blast!==undefined) blastGroups[shot.blast+(shot.frontImpact ? 24 : shot.flash ? 12 : 0)].cells.push(shot);
       else if (shot.missile) missileGroups[2*shot.image+Number(shot.flip)].cells.push(shot);
@@ -926,6 +965,32 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     } else if (!car.camera) { pass.setPipeline(cabinPipeline); pass.draw(36); }
     pass.end();
     if (filtered) postprocess.present(encoder,output,{...settings,upscale:1,sharpen:0});
+    if (car.camera && session.taxi?.monitor) {
+      const monitor = session.taxi.monitor;
+      const [mx,my,mz] = monitor.caseCenter;
+      const [nx,ny] = monitor.screenNormal;
+      const fx = uniforms[14], fy = uniforms[15], distance = 14*uniforms[55];
+      const normalX = ny*fx-nx*fy, normalY = ny*fy+nx*fx;
+      const [caseWidth,caseHeight] = monitor.caseSize;
+      // Convert the model aspect into framebuffer pixels, accounting for CSS stretch.
+      const pixelAspect = aspectNow*renderHeight/renderWidth;
+      const insetAspect = caseWidth/(caseHeight*pixelAspect);
+      const height = Math.max(1,Math.round(Math.min(renderHeight*0.33,renderWidth*0.23/insetAspect)));
+      const width = Math.max(1,Math.round(height*insetAspect));
+      monitorUniforms.set(uniforms);
+      monitorUniforms.set([car.x+my*fx-mx*fy+normalX*distance,
+        car.y+my*fy+mx*fx+normalY*distance,car.z+mz,0,-normalX,-normalY,1,0,
+        2/caseWidth,2/caseHeight]);
+      monitorUniforms[83] = 1; // Orthographic, for the face-on inset only.
+      device.queue.writeBuffer(monitorBuffer,0,monitorUniforms);
+      const inset = encoder.beginRenderPass({colorAttachments:[{view:output,loadOp:'load',storeOp:'store'}],
+        depthStencilAttachment:{view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
+      inset.setViewport(renderWidth-width,renderHeight-height,width,height,0,1);
+      inset.setBindGroup(0,monitorGroup);
+      monitor.draw(inset,session.pipelines.taxi.opaque,false);
+      monitor.draw(inset,session.pipelines.taxi.glass,true,[-nx,-ny,0]);
+      inset.end();
+    }
     if (session.taxi && welcome) {
       const overlay = encoder.beginRenderPass({colorAttachments:[{view:output,loadOp:'load',storeOp:'store'}],
         depthStencilAttachment:{view:depthView,depthClearValue:0,depthLoadOp:'clear',depthStoreOp:'discard'}});
@@ -938,8 +1003,8 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     recordFrame();
   }
   return {resize,draw,tickMaterials,
-    updateWayfinder(source) {
-      device.queue.copyExternalImageToTexture({source},{texture:wayfinderTexture},[64,52]);
+    updateWayfinder(image) {
+      device.queue.writeTexture({texture:wayfinderTexture},image.data,{bytesPerRow:image.width*4},[image.width,image.height]);
     },
     resolution:() => [renderWidth,renderHeight],cameraFor:car => cameraPose(car,district),
     stats:() => streetStats ?? {instances:0,batches:0,vertices:mesh.vertices.length/12},
