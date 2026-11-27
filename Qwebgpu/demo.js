@@ -1,6 +1,5 @@
 import {indexedDisplay, readScreen, readSpriteBank, retraces} from './indexed-screen.js';
 import {coreResources, demoCoreFiles, loadDemoCore} from './demo-data.js';
-import {streetLightGrid} from './district.js';
 import {prepareCabPipelines} from './cab-view.js';
 import {newDriver} from './driving.js';
 import {loadDrivingSounds} from './driving-audio.js';
@@ -82,7 +81,7 @@ export async function runDemo({screen, getDisplay, bytes, getFile, getAudioTrack
       track('HD/QTITLE.png',loadHDImage('QTITLE.GIF'))]).then(([raw,hd]) => ({...readScreen(raw,'QTITLE.GIF'),hd}));
     const trackedFile = (name,optional) => track(name,getFile(name,optional));
     const core = loadDemoCore(trackedFile);
-    const soundsReady = loadDrivingSounds(audio,trackedFile,{engineName:null});
+    const soundsReady = loadDrivingSounds(audio,trackedFile,{engineName:null,nitroName:'NITRO.VOC'});
     const pipelinesReady = displayReady.then(prepareCabPipelines);
     const taxiReady = Promise.all([displayReady,pipelinesReady,import('./taxi-model.js')])
       .then(([display,pipelines,{loadTaxi}]) => loadTaxi(display.device,pipelines.taxi.materialLayout));
@@ -113,7 +112,6 @@ export async function runDemo({screen, getDisplay, bytes, getFile, getAudioTrack
     const [click,wayfinder,hdSky,hdCab,hdDoor,hdFloor,starCubemap,sounds,data,pipelines,taxi,credits] = result.value;
     const district = {...data,hdSky,hdCab,hdDoor,hdFloor,starCubemap,
       taxiCenterZ:taxi?.centerZ,taxiBounds:taxi?.bounds};
-    district.streetLights = streetLightGrid(district);
     const session = {demo:true,district,pipelines,sounds,taxi,wayfinder,car:newDriver(district),welcome:false,resolution:Infinity};
     await vga.fade(title.dac,false);
     progress.hide();

@@ -1,36 +1,6 @@
 import {loadHDImage} from './hd-images.js';
 import {loadStarCubemap} from './skybox.js';
 
-// Bin each lamp into the MAP cells touched by its light. A fragment only
-// visits the local list, including lamps planted across a block boundary.
-export function streetLightGrid({tiles,width,height,mesh,palette}) {
-  const bins = new Map();
-  tiles.forEach((word,i) => {
-    const block = word&127;
-    if (!block) return;
-    for (const [bx,by,z,radius,color,,intensity=1,sourceRoughness=0,nx=0,ny=0,offset=0] of mesh.blockLights[block*4+((word>>>8)&3)]) {
-      const x = (i%width)*512+bx, y = Math.floor(i/width)*512+by;
-      const left = Math.max(0,Math.floor((x-radius)/512)), right = Math.min(width-1,Math.floor((x+radius)/512));
-      const top = Math.max(0,Math.floor((y-radius)/512)), bottom = Math.min(height-1,Math.floor((y+radius)/512));
-      for (let row=top; row<=bottom; row++) {
-        for (let col=left; col<=right; col++) {
-          const cell = row*width+col;
-          if (!bins.has(cell)) bins.set(cell,[]);
-          const c = color*3;
-          bins.get(cell).push(x,y,z,1/(radius*radius),
-            intensity*(palette[c]/63)**2,intensity*(palette[c+1]/63)**2,
-            intensity*(palette[c+2]/63)**2,sourceRoughness,nx,ny,offset,0);
-        }
-      }
-    }
-  });
-  const offsets = new Uint32Array(tiles.length+1);
-  for (let i=0; i<tiles.length; i++) offsets[i+1] = offsets[i]+(bins.get(i)?.length ?? 0)/12;
-  const lights = new Float32Array(12*Math.max(1,offsets[tiles.length]));
-  for (const [cell,values] of bins) lights.set(values,12*offsets[cell]);
-  return {offsets,lights};
-}
-
 // Independent district jobs read asset blobs concurrently. Transferring
 // their typed arrays avoids copying the geometry and indexed texture atlas.
 export async function readDistrict(getFile, start) {
@@ -57,9 +27,7 @@ export async function readDistrict(getFile, start) {
       worker.onmessage = ({data}) => data.error ? reject(new Error(data.error)) : resolve(data.value);
       worker.postMessage({part,start,files:new Map(names.map(name => [name,files.get(name)]))});
     })));
-    const district = Object.assign({start,hdSky,hdCab,hdDoor,hdFloor,starCubemap},...parts);
-    district.streetLights = streetLightGrid(district);
-    return district;
+    return Object.assign({start,hdSky,hdCab,hdDoor,hdFloor,starCubemap},...parts);
   } finally {
     for (const worker of workers) worker.terminate();
   }

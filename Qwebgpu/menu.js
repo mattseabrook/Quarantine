@@ -1,7 +1,7 @@
 import {readSpriteBank} from './indexed-screen.js';
 import {readDistrict} from './district.js';
 import {createCabView, prepareCabPipelines} from './cab-view.js';
-import {driveTick, newDriver, startHover, ticksPerSecond, turnView, updateChaseCamera, zoomChase} from './driving.js';
+import {driveTick, engageNitro, newDriver, selectCabView, startHover, ticksPerSecond, turnView, updateChaseCamera, zoomChase} from './driving.js';
 import {createConsole} from './console.js';
 import {loadDrivingSounds,createDrivingAudio} from './driving-audio.js';
 import {createDrivingDisc} from './cd-audio.js';
@@ -200,7 +200,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
   function describe() {
     screen.setAttribute('aria-label', session.welcome ? district.start.welcome.join('. ') :
       'WASD or arrow keys drive and steer. '+
-      'Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. '+(session.demo ? 'J or Z jumps. P pauses. ' : '')+
+      'Click to capture the mouse and look around. Enter sounds the horn. M opens the map. F switches views. F1, F2 and F3 select left, forward and right cockpit views. '+(session.demo ? 'J or Z jumps. N engages nitro. P pauses. ' : '')+
       'V toggles headlights. Scroll to zoom in chase. '+(session.demo ? '' : 'C changes CD track, P pauses music. ')+'Minus and plus change resolution. Tilde opens settings. Escape '+(session.demo ? 'asks whether to exit.' : 'opens the menu.'));
   }
   function requestExit() {
@@ -306,11 +306,15 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
       if (session.welcome) { dismiss(); captureMouse(); return; }
       if (e.code === 'Escape') requestExit();
       else if ((e.code === 'KeyZ' || (session.demo && e.code === 'KeyJ')) && drivingInput()) startHover(car,session.demo ? 60 : 32);
+      else if (session.demo && e.code === 'KeyN' && drivingInput()) {
+        if (engageNitro(car)) {
+          effects.nitro();
+          report('Nitro charges left: '+car.nitroCharges);
+        } else if (!car.nitroCharges) report('No nitro charges left');
+      }
       else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && drivingInput()) effects.horn();
       else if (['F1','F2','F3'].includes(e.code) && drivingInput()) {
-        car.camera = 0;
-        car.lookYaw = e.code === 'F1' ? Math.PI/2 : e.code === 'F3' ? -Math.PI/2 : 0;
-        car.lookPitch = 0;
+        selectCabView(car,e.code === 'F1' ? 1 : e.code === 'F3' ? -1 : 0);
       }
       else if (e.code === 'KeyF') {
         car.camera = car.camera ? 0 : 1;
@@ -318,8 +322,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
           car.chaseYaw = car.angle*Math.PI/2880;
           car.chaseIdle = 0;
         } else {
-          car.lookYaw = 0;
-          car.lookPitch = 0;
+          selectCabView(car);
         }
         captureMouse();
       }

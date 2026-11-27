@@ -86,6 +86,7 @@ fetch(new URL('./config.json', import.meta.url), {cache: 'no-store'}).then(async
   config = {developerMode:false,...value, demo:value.demo ?? value.shareware ?? false};
   sourceDescription.textContent = 'Using the served '+(config.demo ? 'QDEMO' : 'MS-DOS')+' directory.';
   const choosingFolder = config.fileUpload && uploadMode;
+  launcher.hidden = config.demo && !choosingFolder;
   folderPicker.hidden = !choosingFolder;
   start.hidden = !choosingFolder;
   servedModeLink.hidden = !choosingFolder;
@@ -94,6 +95,7 @@ fetch(new URL('./config.json', import.meta.url), {cache: 'no-store'}).then(async
   updateFolderStatus();
   if (!choosingFolder) startGame();
 }).catch(error => {
+  launcher.hidden = false;
   configError = 'Configuration error: ' + error.message;
   updateFolderStatus();
 });

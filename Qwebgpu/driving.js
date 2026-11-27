@@ -7,6 +7,15 @@ import {cabBody, chaseRange, rideHeight, supportRadius} from './cab-dimensions.j
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
 export const ticksPerSecond = 35;
 const fullTurn = 5760, quarter = 1440;
+// Windshield framing, measured from the dashboard and horizon at the default FOV.
+const windshieldYaw = -10.5*Math.PI/180, windshieldPitch = 7*Math.PI/180;
+
+export function selectCabView(car,side=0) {
+  car.camera = 0;
+  car.lookYaw = side ? side*Math.PI/2 : windshieldYaw;
+  car.lookPitch = side ? 0 : windshieldPitch;
+}
+
 const cabinYawLimit = 100*Math.PI/180;
 const cabinPitchLimit = 45*Math.PI/180;
 const chasePitchLimit = 75*Math.PI/180;
@@ -20,11 +29,21 @@ export function newDriver({start}) {
   return {x: start.x, y: start.y, z: start.z, angle: start.heading*16,
     hazards:{mines:new Map(),guns:new Map(),shots:new Set(),phase:0,column:0,randomIndex:0},health:400,mineSound:null,
     supportZ:start.z, fallSpeed:0, hover:0, landingCounter:0, landingStep:0, landingDelay:0, seatOffset:0,
-    demo:Boolean(start.demo),
+    demo:Boolean(start.demo), nitroCharges:start.nitroCharges ?? 0, nitroTicks:0,
     wayfinderPhase:0, headlights:true, streetContact:null,
     speed: 0, velocity: null, steering: 0, yawSlip:0, yawSlipRate:0, previousYawSlip:0, skidMode:false,
-    camera: 0, lookYaw: 0, lookPitch: 0, chaseYaw: null, chaseIdle: 0,
+    camera: 0, lookYaw: windshieldYaw, lookPitch: windshieldPitch, chaseYaw: null, chaseIdle: 0,
     chasePitch: null, chaseFloorLook: 0, chaseDistance: chaseRange.middle};
+}
+
+// QDEMO 0x34B40 sets both the published velocity and its 8-bit fixed-point accumulator.
+export function engageNitro(car) {
+  if (!car.demo || car.nitroTicks || !car.nitroCharges) return false;
+  car.nitroCharges--;
+  car.nitroTicks = 40;
+  car.velocity = 600;
+  car.speed = 600*256;
+  return true;
 }
 
 export function startHover(car,power=32) {
@@ -194,36 +213,6 @@ function sweepCab(car,district,dx,dy) {
     16*bearing(dy,dx,district.start.mapDisplay.bearings) :
     Math.round(Math.atan2(dx,dy)*2880/Math.PI);
   const endpoints = [];
-  if (district.start.demo) {
-    car.supportZ = support; // 0x347EE samples only the cell under the cab origin.
-    // QDEMO builds DS:D4AC[i] as trunc(20*i/rate), with a minimum of one.
-    const step = () => demoRateAdjustedStep(car.fallSpeed >> 6);
-    if (car.hover < 0) {
-      car.z -= step();
-      car.fallSpeed -= 12 << 4;
-      if (car.fallSpeed < 0) { car.hover = 1; car.fallSpeed = 0; }
-    } else if (car.hover > 0) {
-      car.z += step();
-      if (car.fallSpeed < (48 << 4)) car.fallSpeed += 12 << 4;
-      if (car.z >= support) {
-        car.z = support;
-        car.hover = 0;
-        car.landingCounter--;
-        if (car.landingCounter > 0) {
-          car.fallSpeed = (car.landingCounter*2) << 4;
-          if (!car.landingStep) car.landingStep = 1;
-        }
-      }
-    } else if (car.z < support) {
-      car.fallSpeed += 10 << 4;
-      car.z = Math.min(support,car.z+step());
-      if (car.z === support) car.fallSpeed = 0;
-    } else {
-      car.z = support;
-      car.fallSpeed = 0;
-    }
-    return;
-  }
   for (const offset of [-400,400,-208,208,0]) {
     const heading = travel+offset;
     const x = Math.floor(car.x+dx)+(120*sine(table,heading)>>11);
@@ -278,6 +267,36 @@ function followFloor(car,district) {
     }
   }
   let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
+  if (district.start.demo) {
+    car.supportZ = support; // 0x347EE samples only the cell under the cab origin.
+    // QDEMO builds DS:D4AC[i] as trunc(20*i/rate), with a minimum of one.
+    const step = () => demoRateAdjustedStep(car.fallSpeed >> 6);
+    if (car.hover < 0) {
+      car.z -= step();
+      car.fallSpeed -= 12 << 4;
+      if (car.fallSpeed < 0) { car.hover = 1; car.fallSpeed = 0; }
+    } else if (car.hover > 0) {
+      car.z += step();
+      if (car.fallSpeed < (48 << 4)) car.fallSpeed += 12 << 4;
+      if (car.z >= support) {
+        car.z = support;
+        car.hover = 0;
+        car.landingCounter--;
+        if (car.landingCounter > 0) {
+          car.fallSpeed = (car.landingCounter*2) << 4;
+          if (!car.landingStep) car.landingStep = 1;
+        }
+      }
+    } else if (car.z < support) {
+      car.fallSpeed += 10 << 4;
+      car.z = Math.min(support,car.z+step());
+      if (car.z === support) car.fallSpeed = 0;
+    } else {
+      car.z = support;
+      car.fallSpeed = 0;
+    }
+    return;
+  }
   for (const offset of [-400,400,2480,3280]) {
     const heading = car.angle+offset;
     const x = Math.trunc(car.x)+(supportRadius*sine(district.start.sine,heading)>>11);
@@ -328,6 +347,10 @@ function followFloor(car,district) {
 }
 
 export function driveTick(car, district, keys) {
+  if (car.nitroTicks > 0) {
+    if (!car.hover && car.z < 10) car.z++;
+    car.nitroTicks--;
+  }
   const impact = moveCab(car,district,keys);
   followFloor(car,district);
   tickDistrictHazards(car,district,ticksPerSecond,firstWallHit);

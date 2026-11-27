@@ -1,3 +1,4 @@
+import {streetLightGrid} from './street-lights.js';
 import {districtMesh, cockpitTexture, wallFlags, wallDepthLayers} from './district-mesh.js';
 import {readScreen, readSpriteBank} from './indexed-screen.js';
 import {readMaskFont} from './intro.js';
@@ -316,8 +317,9 @@ async function prepare(part, files, start) {
     .map(({vertices:[a,,c]}) => [c[0],c[1],a[0],a[1],a[2]])
     .filter(([,y0,,y1]) => y0 < y1));
   const diagnostics = {blocks,flags,bankSizes:banks.map(bank => bank.length)};
-  return {value:{mesh,palette,walls,wallOffsets,wallSides,wallDepth,bspNodes,supportFloors,ceilings,diagnostics},
-    transfer:[mesh.atlas.buffer,mesh.vertices.buffer,palette.buffer,walls.buffer,wallOffsets.buffer,
+  const streetLights = streetLightGrid({...grid,mesh,palette});
+  return {value:{streetLights,mesh,palette,walls,wallOffsets,wallSides,wallDepth,bspNodes,supportFloors,ceilings,diagnostics},
+    transfer:[streetLights.offsets.buffer,streetLights.lights.buffer,mesh.atlas.buffer,mesh.vertices.buffer,palette.buffer,walls.buffer,wallOffsets.buffer,
       wallSides.buffer,wallDepth.buffer,bspNodes.buffer,mesh.surfaceNodes.buffer,flags.buffer]};
 }
 

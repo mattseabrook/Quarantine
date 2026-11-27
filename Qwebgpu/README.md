@@ -39,7 +39,7 @@ Set `"demo": true` to use the shareware files from `Qwebgpu/QDEMO`
 Demo mode plays `lakeshore.mp4` first while loading the Core assets in the
 background. The red `QTITLE.GIF` screen shows the current filename and the
 percentage of startup jobs completed before entering the
-same native driving loop as SKIPIT using demo data. The demo uses WASD or the arrow keys to drive and J or Z for its power-60 jump.
+same native driving loop as SKIPIT using demo data. The demo uses WASD or the arrow keys to drive and J or Z for its power-60 jump. Press N to engage nitro. The demo starts with three charges. Each press sets the cab speed to 600 and requires 40 driving ticks before the next charge can fire.
 Both modes use the same world-space asphalt on Core road tiles 0–2, with color sampled from the original unmarked pavement. Wear, aggregate and narrow cracks vary across cell boundaries. Chase view displays the live navigation CRT face-on at the lower right.
 The demo starts at full display resolution. Minus and plus step between 320×200 and monitor resolution. P pauses until the
 next key press. Escape opens the
@@ -144,7 +144,7 @@ cloud highlights remain visible overhead as the sky darkens.
 | A, D or Left, Right | Turn the wheel left or right. Steering acts on signed speed and centers on release. |
 | Alt | Suppress steering input and let the wheel center, as in the original keyboard path. |
 | Enter | Sound the retail cab horn once. |
-| F1, F2, F3 | Look out of the left window, through the windshield, or out of the right window. Each key selects the cockpit and levels the view. |
+| F1, F2, F3 | Look out of the left window, through the windshield, or out of the right window. F2 restores the default dashboard framing. Both side views are level. |
 | Z | Trigger the original hover impulse to hop over obstacles. |
 | Mouse | Click the driving view to capture the pointer. The browser uses raw relative movement when available, falling back to ordinary pointer lock. Click again after returning from settings or a lost capture. Look up to 100° left or right and 45° up or down in the cockpit. In chase view, move horizontally or vertically to orbit the cab. Continuing upward after the boom reaches the cab's bottom moves the camera closer and tilts it toward the sky; moving back reverses this without changing the saved zoom. The camera stays pointed in its world direction when the cab turns, then smoothly follows the cab after two seconds without mouse movement, only while the cab is moving. |
 | F | Toggle between cockpit and chase. New Game starts in the cockpit. Entering chase requests mouse capture for unlimited horizontal orbit; returning to the cockpit centers and levels the view. |
@@ -162,7 +162,7 @@ The lowest mode is 320×200. Widescreen steps include 640×360, 1280×720,
 1920×1080 and 2560×1440 when they fit the display. Gameplay defaults to the
 display's native pixel dimensions, subject to the device's texture limit.
 Open Settings with tilde to set horizontal FOV from 60° to 120° in one-degree
-steps. The default is the retail projection (about 64°) in cockpit and chase. The zoom wheel controls the
+steps. The default is 109° to frame the windshield and dashboard monitor. The 64° setting uses the retail projection. The zoom wheel controls the
 chase boom independently. It shortens when it crosses a wall or deck, but
 ignores geometry entirely above the cab so overhead gantries do not pull it in.
 At minimum zoom it sits just above the modeled cab bottom; at maximum zoom

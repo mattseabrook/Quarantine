@@ -4,7 +4,7 @@ try { saved = JSON.parse(localStorage.getItem(storageKey)); } catch {}
 const volume = n => Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 100;
 const strength = n => Number.isFinite(n) ? Math.min(100,Math.max(0,Math.round(n))) : 0;
 export const settings = {
-  fov: Number.isFinite(saved?.fov) ? Math.max(60,Math.min(120,Math.round(saved.fov))) : 64,
+  fov: Number.isFinite(saved?.fov) ? Math.max(60,Math.min(120,Math.round(saved.fov))) : 109,
   invertY: saved?.invertY === true,
   effects: volume(saved?.effects),
   cd: volume(saved?.cd),

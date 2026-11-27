@@ -51,35 +51,31 @@ fn cabLitColor(baseColor:vec3f, rough:f32, metal:f32, worldPos:vec3f, n:vec3f, e
 
   // Evaluate each nearby fixture in world space. Paint, glass and chrome
   // share the light position and color but retain their authored roughness.
-  let cell = vec2i(floor(worldPos.xy/512.0));
-  let size = vec2i(view.scale.zw);
-  if (all(cell >= vec2i(0)) && all(cell < size)) {
-    let bin = u32(cell.y*size.x+cell.x);
-    for (var i=cellStarts[bin]; i<cellStarts[bin+1u]; i++) {
-      let lamp = lights[i];
-      if (behindEmitter(lamp,worldPos)) { continue; }
-      let delta = lamp.positionRadius.xyz-worldPos;
-      let d2 = dot(delta,delta);
-      let falloff = 1.0-d2*lamp.positionRadius.w;
-      let l = delta*inverseSqrt(max(d2,0.0001));
-      let nl = dot(n,l);
-      if (falloff <= 0.0) { continue; }
-      let radiance = lamp.rgb.xyz*(2.0*falloff*falloff);
-      if (lamp.rgb.w < 0.0) { linear += radiance*diffuse*0.2; }
-      if (nl <= 0.0) { continue; }
-      let halfway = l+eye;
-      let h = halfway*inverseSqrt(max(dot(halfway,halfway),0.0001));
-      let nh = max(0.0,dot(n,h));
-      let lightRoughness = max(rough,abs(lamp.rgb.w));
-      let a2 = pow(lightRoughness,4.0);
-      let k = (lightRoughness+1.0)*(lightRoughness+1.0)/8.0;
-      let d = nh*nh*(a2-1.0)+1.0;
-      let distribution = a2/max(3.14159*d*d,0.0000001);
-      let visibility = 0.25/((nv*(1.0-k)+k)*(nl*(1.0-k)+k));
-      let fresnel = f0+(1.0-f0)*pow(1.0-clamp(dot(eye,h),0.0,1.0),5.0);
-      let incident = radiance*nl;
-      linear += incident*(diffuse*(1.0-fresnel)+fresnel*distribution*visibility);
-    }
+  let range = lampRange(worldPos);
+  for (var i=range.x; i<range.y; i++) {
+    let lamp = lights[lightBins[i]];
+    if (behindEmitter(lamp,worldPos)) { continue; }
+    let delta = lamp.positionRadius.xyz-worldPos;
+    let d2 = dot(delta,delta);
+    let falloff = 1.0-d2*lamp.positionRadius.w;
+    if (falloff <= 0.0) { continue; }
+    let l = delta*inverseSqrt(max(d2,0.0001));
+    let nl = dot(n,l);
+    let radiance = lamp.rgb.xyz*(2.0*falloff*falloff);
+    if (lamp.rgb.w < 0.0) { linear += radiance*diffuse*0.2; }
+    if (nl <= 0.0) { continue; }
+    let halfway = l+eye;
+    let h = halfway*inverseSqrt(max(dot(halfway,halfway),0.0001));
+    let nh = max(0.0,dot(n,h));
+    let lightRoughness = max(rough,abs(lamp.rgb.w));
+    let a2 = pow(lightRoughness,4.0);
+    let k = (lightRoughness+1.0)*(lightRoughness+1.0)/8.0;
+    let d = nh*nh*(a2-1.0)+1.0;
+    let distribution = a2/max(3.14159*d*d,0.0000001);
+    let visibility = 0.25/((nv*(1.0-k)+k)*(nl*(1.0-k)+k));
+    let fresnel = f0+(1.0-f0)*pow(1.0-clamp(dot(eye,h),0.0,1.0),5.0);
+    let incident = radiance*nl;
+    linear += incident*(diffuse*(1.0-fresnel)+fresnel*distribution*visibility);
   }
   return pow(max(linear,vec3f(0.0)),vec3f(1.0/2.2))*view.settings.x;
 }

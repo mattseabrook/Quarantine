@@ -62,6 +62,7 @@ export async function loadDemoCore(getFile) {
   const [scaleX,scaleY,divisorX,divisorY] = Array.from({length:4},(_,i) => data.getInt32(0x61d4+4*i,true));
   const [offsetX,offsetY] = words(0x61e4+4*district,2);
   const start = {...coreResources,x:cellX*512+256,y:cellY*512+256,z,
+    nitroCharges:data.getUint16(0x7ad0,true),
     shadeDistance:data.getInt16(0x7c24,true),shadeWeights:words(0x7c26,16),
     thrust:words(0x52fa,18),landingOffsets:words(0x77e4,16),
     mapDisplay:{...coreResources.mapDisplay,scaleX,scaleY,divisorX,divisorY,offsetX,offsetY,

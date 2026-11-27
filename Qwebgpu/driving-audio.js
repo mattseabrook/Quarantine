@@ -1,10 +1,11 @@
 import {readVoice} from './dos-assets.js';
 import {effectsOutput} from './settings.js';
 
-export async function loadDrivingSounds(context,getFile,{engineName = 'ENG7.VOC'} = {}) {
-  async function load(name) {
+export async function loadDrivingSounds(context,getFile,{engineName = 'ENG7.VOC', nitroName} = {}) {
+  async function load(name, optional = false) {
     try {
       const file = await getFile(name,true);
+      if (!file && optional) return null;
       if (!file) throw new Error(name+' is missing.');
       return readVoice(context,new Uint8Array(await file.arrayBuffer()),name);
     } catch (error) {
@@ -12,10 +13,10 @@ export async function loadDrivingSounds(context,getFile,{engineName = 'ENG7.VOC'
       return null;
     }
   }
-  const [engine,impact,horn,arrival,blast1,blast2,launch] = await Promise.all([
-    engineName ? load(engineName) : null,load('IMPACT.VOC'),load('HORN.VOC'),load('TING.VOC'),load('EXPLO1.VOC'),load('EXPLO2.VOC'),load('FIREBELC.VOC'),
+  const [engine,impact,horn,arrival,blast1,blast2,launch,nitro] = await Promise.all([
+    engineName ? load(engineName) : null,load('IMPACT.VOC'),load('HORN.VOC'),load('TING.VOC'),load('EXPLO1.VOC'),load('EXPLO2.VOC'),load('FIREBELC.VOC'),nitroName ? load(nitroName,true) : null,
   ]);
-  return {engine,impact,horn,arrival,blasts:[blast1,blast2],launch,unavailable:[!launch && 'FIREBELC.VOC',!blast1 && 'EXPLO1.VOC',!blast2 && 'EXPLO2.VOC',!engine && engineName,!impact && 'IMPACT.VOC',!horn && 'HORN.VOC',!arrival && 'TING.VOC'].filter(Boolean)};
+  return {engine,nitro,impact,horn,arrival,blasts:[blast1,blast2],launch,unavailable:[!launch && 'FIREBELC.VOC',!blast1 && 'EXPLO1.VOC',!blast2 && 'EXPLO2.VOC',!engine && engineName,!impact && 'IMPACT.VOC',!horn && 'HORN.VOC',!arrival && 'TING.VOC'].filter(Boolean)};
 }
 
 export function createDrivingAudio(context,sounds) {
@@ -84,7 +85,7 @@ export function createDrivingAudio(context,sounds) {
     source.start();
   }
 
-  return {setActive,stopEngine,update,launch:() => playEffect(sounds.launch),explode:i => playEffect(sounds.blasts[i]),arrive:() => playEffect(sounds.arrival),contact:() => playEffect(sounds.impact),horn:() => playEffect(sounds.horn),close() {
+  return {setActive,stopEngine,update,nitro:() => playEffect(sounds.nitro),launch:() => playEffect(sounds.launch),explode:i => playEffect(sounds.blasts[i]),arrive:() => playEffect(sounds.arrival),contact:() => playEffect(sounds.impact),horn:() => playEffect(sounds.horn),close() {
     if (closed) return;
     closed = true;
     active = false;

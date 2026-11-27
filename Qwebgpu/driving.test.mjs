@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {driveTick, newDriver, startHover} from './driving.js';
+import {driveTick, engageNitro, newDriver, startHover} from './driving.js';
 
 function district(wall) {
   const sine = Array.from({length:1441},(_,i) => Math.round(2048*Math.sin(i*Math.PI/2880)));
@@ -108,4 +108,23 @@ test('QDEMO jump consumes its rate-adjusted landing counter', () => {
   assert.equal(car.hover,0);
   assert.equal(car.landingCounter,3);
   assert.equal(car.fallSpeed,6 << 4);
+});
+
+test('QDEMO nitro spends one charge and unlocks after 40 driving ticks', () => {
+  const world = district();
+  world.start.nitroCharges = 3;
+  assert.equal(engageNitro(newDriver(world)),false);
+  world.start.demo = true;
+  const car = newDriver(world);
+  for (let remaining=2; remaining>=0; remaining--) {
+    assert.equal(engageNitro(car),true);
+    assert.equal(car.velocity,600);
+    assert.equal(car.speed,600*256);
+    for (let tick=0; tick<40; tick++) {
+      assert.equal(engageNitro(car),false);
+      driveTick(car,world,new Set());
+    }
+    assert.equal(car.nitroCharges,remaining);
+  }
+  assert.equal(engageNitro(car),false);
 });

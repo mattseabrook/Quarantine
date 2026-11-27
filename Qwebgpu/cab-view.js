@@ -1,3 +1,4 @@
+import {lightBinSize} from './street-lights.js';
 import {cabBody} from './cab-dimensions.js';
 import {settings} from './settings.js';
 import {cameraPose, ticksPerSecond} from './driving.js';
@@ -36,7 +37,7 @@ const shader = cameraShader + textureFilterShader + `
 @group(0) @binding(1) var atlas: texture_2d<u32>;
 @group(0) @binding(2) var colors: texture_2d<f32>;
 @group(0) @binding(3) var cockpit: texture_2d<u32>;
-@group(0) @binding(4) var<storage,read> cellStarts: array<u32>;
+@group(0) @binding(4) var<storage,read> lightBins: array<u32>;
 struct Light { positionRadius: vec4f, rgb: vec4f, face: vec4f };
 fn behindEmitter(light:Light, point:vec3f) -> bool {
   return dot(point.xy-light.positionRadius.xy,light.face.xy)+light.face.z < -0.05;
@@ -148,25 +149,28 @@ struct Surface {
   }
   return out;
 }
+fn lampRange(worldPos: vec3f) -> vec2u {
+  let cell = vec2i(floor(worldPos.xy/${lightBinSize}.0));
+  let size = vec2i(view.scale.zw)*${512/lightBinSize};
+  if (any(cell < vec2i(0)) || any(cell >= size)) { return vec2u(0); }
+  let bin = u32(cell.y*size.x+cell.x);
+  return vec2u(lightBins[bin],lightBins[bin+1u]);
+}
 fn lightAt(worldPos: vec3f, normal: vec3f, diffuse: bool) -> vec3f {
-  let cell = vec2i(floor(worldPos.xy/512.0));
-  let size = vec2i(view.scale.zw);
   var irradiance = view.ambient.rgb;
-  if (all(cell >= vec2i(0)) && all(cell < size)) {
-    let bin = u32(cell.y*size.x+cell.x);
-    let end = cellStarts[bin+1u];
-    for (var i=cellStarts[bin]; i<end; i++) {
-      let light = lights[i];
-      if (light.rgb.w < 0.0 || behindEmitter(light,worldPos)) { continue; }
-      let toLamp = light.positionRadius.xyz-worldPos;
-      let d2 = dot(toLamp,toLamp);
-      let falloff = max(0.0,1.0-d2*light.positionRadius.w);
-      var incidence = 1.0;
-      if (diffuse) {
-        incidence = max(0.0,dot(normal,toLamp)*inverseSqrt(max(d2,1.0)));
-      }
-      irradiance += light.rgb.xyz*(7.0*incidence*falloff*falloff);
+  let range = lampRange(worldPos);
+  for (var i=range.x; i<range.y; i++) {
+    let light = lights[lightBins[i]];
+    if (light.rgb.w < 0.0 || behindEmitter(light,worldPos)) { continue; }
+    let toLamp = light.positionRadius.xyz-worldPos;
+    let d2 = dot(toLamp,toLamp);
+    let falloff = 1.0-d2*light.positionRadius.w;
+    if (falloff <= 0.0) { continue; }
+    var incidence = 1.0;
+    if (diffuse) {
+      incidence = max(0.0,dot(normal,toLamp)*inverseSqrt(max(d2,1.0)));
     }
+    irradiance += light.rgb.xyz*(7.0*incidence*falloff*falloff);
   }
   return irradiance;
 }
@@ -481,6 +485,7 @@ struct Halo {
   @location(2) @interpolate(flat) visibility: f32
 };
 fn projectHalo(i:u32, source:vec4f, paletteIndex:u32, visibility:f32) -> Halo {
+  if (visibility <= 0.0) { return Halo(vec4f(0,0,0,1),vec2f(0),paletteIndex,0.0); }
   let corners = array<vec2f,6>(vec2f(-1,-1),vec2f(1,-1),vec2f(1,1),
                                  vec2f(-1,-1),vec2f(1,1),vec2f(-1,1));
   let disc = corners[i];
@@ -646,6 +651,7 @@ function visibleDistrict(groups, camera, sx, sy, instances, halos, visibleHalos)
       instances[3*instanceCount+1] = cell.y;
       instances[3*instanceCount+2] = cell.z ?? 0;
       instanceCount++;
+      if (!cell.haloCount) continue;
       const begin = cell.haloFirst*7, end = begin+cell.haloCount*7;
       visibleHalos.set(halos.subarray(begin,end),haloCount*7);
       haloCount += cell.haloCount;
@@ -695,7 +701,8 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const turretGroups = mesh.turretRanges.map(range => ({...range,cells:[]}));
   const actors = [...turretGroups,...hazardGroups,...missileGroups,...blastGroups];
   groups.push(...actors);
-  const instanceData = new Float32Array((district.tiles.length+40)*3), haloData = new Float32Array(halos.length);
+  const placedCells = groups.reduce((sum,group) => sum+group.cells.length,0);
+  const instanceData = new Float32Array((placedCells+40)*3), haloData = new Float32Array(halos.length);
   const instances = buffer(Math.max(8,instanceData.byteLength),GPUBufferUsage.VERTEX);
   const haloInstances = halos.length ? buffer(halos.byteLength,GPUBufferUsage.VERTEX) : null;
   const reflectionSize = 128;

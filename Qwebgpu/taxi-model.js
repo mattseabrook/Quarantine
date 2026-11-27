@@ -38,18 +38,25 @@ function readGeometry(gltf, binary, monitor, cabRatio) {
           return accessor(id,2,5126);
         }
         const plateUV = !monitor && material.name === 'numberplate' ? gltf.accessors[TEXCOORD_0] : null;
+        const boundsOnly = hidden || (monitor && material.name === 'monitor_screen');
         pieces.push({matrix,position,indices,normal:accessor(NORMAL,3,5126),uv:accessor(TEXCOORD_0,2,5126),plateUV,
           metalUV:textureUV(material.pbrMetallicRoughness.metallicRoughnessTexture),
           normalUV:textureUV(material.normalTexture),
-          tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material,hidden});
-        vertexCount += position.length/3;
-        indexCount += indices.length;
+          tangent:TANGENT === undefined ? null : accessor(TANGENT,4,5126),material:primitive.material,boundsOnly});
+        if (!boundsOnly) {
+          vertexCount += position.length/3;
+          indexCount += indices.length;
+        }
       }
     }
     for (const child of node.children ?? []) visit(child,matrix,selected,hidden);
   }
   for (const root of gltf.scenes[gltf.scene].nodes) visit(root,new Matrix4());
   if (!pieces.length) throw new Error('No matching geometry in vehicle model');
+  // Pack opaque indices in material draw order. Keep the source order of glass
+  // pieces so depth ties retain their original blending order.
+  const order = piece => gltf.materials[piece.material].alphaMode === 'BLEND' ? gltf.materials.length : piece.material;
+  pieces.sort((a,b) => order(a)-order(b));
   const vertices = new Float32Array((vertexCount+(monitor ? 4 : 0))*16);
   const indices = new Uint32Array(indexCount+(monitor ? 6 : 0));
   const low = new Vector3(Infinity,Infinity,Infinity), high = new Vector3(-Infinity,-Infinity,-Infinity);
@@ -72,6 +79,7 @@ function readGeometry(gltf, binary, monitor, cabRatio) {
         const row = p.y < 0.87 ? 0 : p.y < 0.985 ? 1 : 2;
         rearBulbs[3*Number(p.x >= 0)+row].expandByPoint(p);
       }
+      if (piece.boundsOnly) continue;
       n.fromArray(normal,3*i).applyNormalMatrix(normalMatrix);
       if (tangent) t.fromArray(tangent,4*i).transformDirection(matrix);
       else t.set(0,0,0);
@@ -87,6 +95,7 @@ function readGeometry(gltf, binary, monitor, cabRatio) {
         tangent ? tangent[i*4+3]*(mirrored ? -1 : 1) : 0,
         metalUV[i*2],metalUV[i*2+1],normalUV[i*2],normalUV[i*2+1]],at);
     }
+    if (piece.boundsOnly) continue;
     for (let i=0; i<piece.indices.length; i+=3) {
       indices[first+i] = base+piece.indices[i];
       indices[first+i+1] = base+piece.indices[i+(mirrored ? 2 : 1)];
@@ -97,9 +106,7 @@ function readGeometry(gltf, binary, monitor, cabRatio) {
       front.z = lens.max.z;
       lensCenters.push(front);
     }
-    if (!piece.hidden && (!monitor || gltf.materials[piece.material].name !== 'monitor_screen')) {
-      draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
-    }
+    draws.push({first,count:piece.indices.length,material:piece.material,center:center.multiplyScalar(3/position.length)});
     first += piece.indices.length;
     base += position.length/3;
   }
@@ -278,8 +285,18 @@ async function uploadModel(device,materialLayout,url,monitor = false,cabRatio = 
         {binding:4,resource:imageView(m.normalTexture,flat)}]});
     });
     const opaque = [], glass = [];
-    for (const d of draws) (gltf.materials[d.material].alphaMode === 'BLEND' ? glass : opaque).push(d);
-    opaque.sort((a,b) => a.material-b.material);
+    for (const draw of draws) {
+      if (gltf.materials[draw.material].alphaMode === 'BLEND') {
+        glass.push(draw);
+        continue;
+      }
+      const previous = opaque.at(-1);
+      if (previous?.material === draw.material && previous.first+previous.count === draw.first) {
+        previous.count += draw.count;
+      } else {
+        opaque.push(draw);
+      }
+    }
     return {caseCenter:geometry.caseCenter,caseSize:geometry.caseSize,screenNormal:geometry.screenNormal,cabRatio:geometry.cabRatio,eye:geometry.eye,centerZ,headlamps,taillamps,bounds,draw(pass,pipeline,transparent,direction) {
       const parts = transparent ? glass : opaque;
       if (transparent) {

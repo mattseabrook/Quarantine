@@ -95,7 +95,7 @@ trust the public certificate on each client. For example, run these commands in
 PowerShell on a Windows client using the Arch account's SSH access.
 
 ```powershell
-scp seabrook@plague.local:.local/share/qwebgpu/plague.local.crt .
+scp seabrook@plague.local:.local/state/qwebgpu/plague.local.crt .
 certutil.exe -user -addstore Root .\plague.local.crt
 ```
 
