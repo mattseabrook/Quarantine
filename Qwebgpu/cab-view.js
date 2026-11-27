@@ -5,11 +5,13 @@ import {cameraPose, ticksPerSecond} from './driving.js';
 import {createHDTexture} from './hd-images.js';
 import {taxiShader,prepareTaxiPipelines} from './taxi-material.js';
 import {textureFilterShader} from './texture-filter.js';
+import {createPavementTexture} from './pavement.js';
 import {cloudResolutionDivisor, cloudTargetFormat, prepareCloudPipeline, skylineKey, skyResources} from './skybox.js';
 
 const cabinHalfWidth = 26, windshieldDistance = 22, cabinTopClearance = 19;
 const skylineElevationScale = 1.38;
 const depthFormat = 'depth32float';
+const demoSkyRGB = new Float32Array([32/255,16/255,40/255]);
 const modes = [[320,200],[640,360],[854,480],[960,540],[1280,720],[1600,900],
   [1920,1080],[2560,1440],[3200,1800],[3840,2160],[5120,2880],[7680,4320]];
 
@@ -57,6 +59,8 @@ struct BspNode { plane: vec4f, links: vec4f };
 @group(0) @binding(15) var reflections: texture_cube<f32>;
 @group(0) @binding(16) var wayfinder: texture_2d<f32>;
 @group(0) @binding(17) var hdFloor: texture_2d<f32>;
+@group(0) @binding(18) var pavementTile: texture_2d<f32>;
+@group(0) @binding(19) var pavementSampler: sampler;
 // Rank this surface in the far-child, splitter, near-child walk at 0x4012C.
 // Only surfaces sharing a plane need a tie-break in the GPU depth buffer.
 fn painterRank(surface: u32, eye: vec3f) -> f32 {
@@ -121,14 +125,14 @@ struct Surface {
   out.shadeDivisor = select(110.0,view.backdrop.y,view.backdrop.y > 0.0);
   if (wall.z >= 0.0) {
     let flagsAndFace = u32(wall.z);
-    var flags = flagsAndFace & 31u;
-    if ((flagsAndFace & 32u) != 0u && view.player.w != 0.0) { flags |= 2u; }
+    // Keep the exterior-back marker separate from authored two-sided walls.
+    var flags = flagsAndFace & 63u;
     if (rect.x < 0.0) {
       let frame = wallFrames[u32(-1.0-rect.x)];
       out.rect = frame.rect;
       let bits = u32(frame.flags.x);
       let mask = select(bits & 1u, select(0u,1u,bits != 0u), (flags & 8u) != 0u);
-      flags = (flags & 30u) | mask;
+      flags = (flags & 62u) | mask;
     }
     out.flags = f32(flags);
     let tile = u32(cell.y/512.0)*u32(view.scale.z)+u32(cell.x/512.0);
@@ -223,39 +227,42 @@ fn atlasColor(rect:vec4f,p:vec2i,band:i32,masked:bool,fallback:vec3f) -> vec3f {
   if (masked && ink == 0u) { return fallback; }
   return textureLoad(colors,vec2i(i32(ink),band),0).rgb;
 }
-fn pavementHash(cell:vec2i) -> f32 {
-  let p = bitcast<vec2u>(cell);
-  var h = p.x*0x9e3779b9u + p.y*0x85ebca6bu;
-  h = (h ^ (h >> 16u))*0x7feb352du;
-  return f32(h ^ (h >> 15u))/4294967296.0;
+fn pavementNoise(p:vec2f, dx:vec2f, dy:vec2f) -> f32 {
+  // Explicit gradients remain valid after material masking/discards.
+  return textureSampleGrad(pavementTile,pavementSampler,p/8.0+vec2f(0.5/256.0),dx/8.0,dy/8.0).r;
 }
-fn pavementNoise(p:vec2f) -> f32 {
-  let cell = vec2i(floor(p));
-  let t = smoothstep(vec2f(0),vec2f(1),fract(p));
-  return mix(mix(pavementHash(cell),pavementHash(cell+vec2i(1,0)),t.x),
-             mix(pavementHash(cell+vec2i(0,1)),pavementHash(cell+vec2i(1,1)),t.x),t.y);
-}
-fn asphalt(p:vec2f, footprint:f32) -> vec3f {
-  let wear = pavementNoise(p/124.0);
-  let warp = vec2f(pavementNoise(p/19.0),pavementNoise(p/27.0+vec2f(31.0)));
-  let seam = abs(pavementNoise(p/53.0+warp*0.22)-0.5);
+fn asphalt(p:vec2f, dx:vec2f, dy:vec2f, footprint:f32) -> vec3f {
+  let wear = pavementNoise(p/124.0,dx/124.0,dy/124.0);
+  let warp = vec2f(pavementNoise(p/19.0,dx/19.0,dy/19.0),
+    pavementNoise(p/27.0+vec2f(31.0),dx/27.0,dy/27.0));
+  let seam = abs(pavementNoise(p/53.0+warp*0.22,dx/53.0,dy/53.0)-0.5);
   let width = max(0.009,min(0.3,footprint/53.0));
   let crack = (1.0-smoothstep(0.0,width,seam))*(0.009/width)*smoothstep(0.36,0.68,wear);
-  let aggregate = (pavementNoise(p*2.3)-0.5)*(1.0-smoothstep(0.2,0.8,footprint));
+  let aggregate = (pavementNoise(p*2.3,dx*2.3,dy*2.3)-0.5)*(1.0-smoothstep(0.2,0.8,footprint));
   let base = vec3f(0.12);
   return base*max(0.18,0.77+0.27*wear+aggregate*0.55-0.58*crack);
 }
 @fragment fn material(in: Surface) -> @location(0) vec4f {
   let footprint = length(fwidth(in.worldPos.xy));
+  let pavementDx = dpdx(in.worldPos.xy);
+  let pavementDy = dpdy(in.worldPos.xy);
+  if (in.flags == -5.0) { return vec4f(0.0,0.0,0.0,1.0); }
   if (in.flags == -2.0 && in.height <= view.eye.z) { discard; }
   if (in.flags == -3.0 && view.player.w == 0.0 && in.height >= view.eye.z) { discard; }
+  if (in.flags >= 0.0 && in.facing > 0.0) {
+    let flags = u32(in.flags);
+    // A one-sided facade closes the inaccessible building volume. Its back
+    // occludes the scene below the wall's existing roofline without receiving
+    // texture, lights, haze or emission. Authored two-sided walls keep their art.
+    if ((flags & 32u) != 0u) { return vec4f(0.0,0.0,0.0,1.0); }
+    if ((flags & 2u) == 0u) { discard; }
+  }
   var uv = in.uv;
   if (in.flags >= 0.0 && in.facing > 0.0) { uv.x = -uv.x; }
   let at = vec2i(in.rect.xy + floor(fract(uv)*in.rect.zw));
   let index = textureLoad(atlas,at,0).r;
   if (in.flags >= 0.0) {
     let flags = u32(in.flags);
-    if (in.facing > 0.0 && (flags & 2u) == 0u) { discard; }
     if (index == 0u && (flags & 1u) != 0u) { discard; }
   }
   if (in.transparent > 0.0 && index == 0u) { discard; }
@@ -304,7 +311,7 @@ fn asphalt(p:vec2f, footprint:f32) -> vec3f {
     ink = replacement;
   }
   if (in.normalAndLamp.w == -1.0 && in.flags == -2.0) {
-    ink = asphalt(in.worldPos.xy,footprint);
+    ink = asphalt(in.worldPos.xy,pavementDx,pavementDy,footprint);
     surface = ink*(1.0-0.65*f32(band)/63.0);
   }
   let irradiance = lightAt(in.worldPos,in.normalAndLamp.xyz,in.flags != -4.0);
@@ -329,7 +336,7 @@ fn asphalt(p:vec2f, footprint:f32) -> vec3f {
       }
     }
   }
-  if (in.flags >= 16.0) {
+  if (in.flags >= 0.0 && (u32(in.flags) & 16u) != 0u) {
     if ((ink.r > 0.55 && ink.r > ink.b*2.5 && ink.r >= ink.g) || index == 48u) {
       lit = max(lit,ink);
       emissive = max(emissive,ink);
@@ -567,7 +574,8 @@ async function buildPipelines({device,format}) {
     {binding:12,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},
     ...[13,14].map(binding => ({binding,visibility:GPUShaderStage.VERTEX,buffer:{type:'read-only-storage'}})),
     {binding:15,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float',viewDimension:'cube'}},
-    ...[16,17].map(binding => ({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}))]});
+    ...[16,17,18].map(binding => ({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}})),
+    {binding:19,visibility:GPUShaderStage.FRAGMENT,sampler:{type:'filtering'}}]});
   const layout = device.createPipelineLayout({bindGroupLayouts:[bindLayout]});
   function pipeline(vertex,fragment,buffers=[]) {
     const halo = vertex === 'haloVertex' || vertex === 'headlampHalo' || vertex === 'taillampHalo';
@@ -677,6 +685,9 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     return buf;
   }
   const atlas = texture(1024,mesh.atlas.length/1024,'r8uint',mesh.atlas,1024);
+  const pavement = own(createPavementTexture(device));
+  const pavementSampler = device.createSampler({addressModeU:'repeat',addressModeV:'repeat',
+    minFilter:'linear',magFilter:'linear',mipmapFilter:'linear'});
   const paletteRows = district.palette.length/768;
   const rgba = Uint8Array.from({length:1024*paletteRows},(_,i) => {
     if (i%4===3) return 255;
@@ -751,7 +762,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
   const paletteRGB = index => Array.from(rgba.subarray(index*4,index*4+3),byte => byte/255);
   if (key) uniforms.set(key,84);
   // SKIPIT Core palette 81, expanded from the six-bit gameplay DAC.
-  const skyRGB = session.demo ? [32/255,16/255,40/255] : key ?? paletteRGB(mesh.skyIndex);
+  const skyRGB = session.demo ? demoSkyRGB : key ?? paletteRGB(mesh.skyIndex);
   const peak = Math.max(...skyRGB);
   // Use the sky's chroma for ambient light while keeping the street exposure.
   uniforms.set(skyRGB.map(c => 0.28*(peak ? (c/peak)**2 : 1)),28);
@@ -778,6 +789,8 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     {binding:14,resource:{buffer:bsp}},
     {binding:16,resource:wayfinderTexture.createView()},
     {binding:17,resource:(hdFloor ?? hdFallback).createView()},
+    {binding:18,resource:pavement.createView()},
+    {binding:19,resource:pavementSampler},
   ];
   const reflectionGroup = device.createBindGroup({layout:bindLayout,entries:[
     ...bindings.map(entry => entry.binding === 0 ? {binding:0,resource:{buffer:reflectionBuffer}} : entry),
@@ -971,7 +984,7 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
       session.taxi.monitor?.draw(pass,session.pipelines.taxi.glass,true,direction);
     } else if (!car.camera) { pass.setPipeline(cabinPipeline); pass.draw(36); }
     pass.end();
-    if (filtered) postprocess.present(encoder,output,{...settings,upscale:1,sharpen:0});
+    if (filtered) postprocess.present(encoder,output,settings);
     if (car.camera && session.taxi?.monitor) {
       const monitor = session.taxi.monitor;
       const [mx,my,mz] = monitor.caseCenter;

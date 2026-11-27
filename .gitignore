@@ -11,3 +11,6 @@ research/
 
 Quarantine-codes.jpg
 /Qwebgpu/HD/cars/taxi/commodore-64-computer-full-pack.zip
+/Qwebgpu/node_modules/
+/Qwebgpu/dist/
+/Qwebgpu/dist.new/

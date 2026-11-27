@@ -454,7 +454,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
             }
           }
           if (driving) effects.update(car.velocity ?? (car.speed >> 8));
-          const alpha = accumulator/dt;
+          const alpha = driving && !session.welcome ? accumulator/dt : 1;
           visibleCar.x = lastTick.x + (car.x-lastTick.x)*alpha;
           visibleCar.y = lastTick.y + (car.y-lastTick.y)*alpha;
           visibleCar.z = lastTick.z + (car.z-lastTick.z)*alpha;

@@ -1,4 +1,5 @@
 import {drawSprite} from './indexed-screen.js';
+import {roofCaps} from './roof-caps.js';
 
 const planeIndex = (x,y) => (x&3)*16000+y*80+(x>>>2);
 
@@ -282,6 +283,14 @@ export function districtMesh(district) {
               sign*(b[0]-a[0]),sign*(b[1]-a[1]),flagsAndFace);
             surfaceNodes.push(node);
           }
+        }
+      }
+      // These are visual occluders only; the DOS collision/support data stays
+      // untouched. Negative material kind -5 bypasses all texture and lighting.
+      for (const cap of roofCaps(block,material => wallFlags(block,variant,material,district.flags))) {
+        for (const j of [0,1,2,0,2,3]) {
+          vertices.push(...cap[j],0,0,0,0,1,1,0,0,-5);
+          surfaceNodes.push(0);
         }
       }
       for (const obj of block.placements) {

@@ -278,7 +278,15 @@ and use directional EMISSILE sprites. A head-on missile impact follows the cab f
 its existing wall sweep for projectile obstruction. The complete damage, death,
 shared actor scheduling and other weapon paths remain open.
 
-Chase cameras draw the backs of facades and retain the open tops of the original map geometry. The hover light is evaluated on the receiving floor.
+The inaccessible backs of one-sided facades render opaque black below their
+existing roofline, with depth occlusion and no lighting, haze or emission.
+Street-facing artwork and authored two-sided walls retain their textures.
+Missing roofs over inaccessible building volumes are closed with opaque black
+caps inferred from the solid one-sided facades. Streets, courtyards, masked
+openings and authored two-sided walls are excluded from the inferred boundaries.
+The caps participate in depth occlusion but receive no textures, light, haze or
+emission, and do not change collision or floor support. The hover light is
+evaluated on the receiving floor.
 
 SKIPIT loads per-district collision and trigger tables and initializes a
 128-byte district state array with district-specific values at `0x45340`.
@@ -426,6 +434,45 @@ The [renderer](display.js) calls WebGPU directly. FLI frames
 upload from the decoder's linear index array. For game screens the same
 shader addresses four VGA planes. Palette fades reuse the index texture.
 The browser port runs as local JavaScript modules and requires no build step.
+
+### Production package
+
+Run `npm ci --no-audit --no-fund` and `npm run build` in `Qwebgpu` to generate
+`dist/`. The production entry, separate district/AVI workers and stylesheet have
+hashed filenames. JavaScript uses esbuild's ES2022 minification with source maps;
+the build does not enable unsafe arithmetic transforms. Worker URLs point to the
+generated worker filenames. Brotli sidecars accompany the text resources.
+Game files and HD assets remain separate from this generated code package.
+
+`../deploy.sh` builds this package and stages it with the existing allowlisted
+assets. Both included servers negotiate precompressed `.br` resources and mark
+hashed JavaScript/CSS immutable for one year. HTML and configuration remain
+uncached. The LAN service continues serving the editable source modules.
+
+`vendor/truemotion1/` is copied byte-for-byte, with its readable decoder,
+codebook and `COPYING.LGPLv2.1`; it remains external to the minified bundles.
+The renderer and GLB loader have no Three.js dependency. Model loading uses
+only the local affine math operations in `model-math.js`.
+
+Pavement uses a periodic 256×256 R8 noise tile with all nine mip levels, baked
+once per district load, and explicit shader gradients. Its world-space noise
+scales are retained, with an eight-cell repeat. Gameplay presentation interpolates
+the fixed-step cab pose; paused screens use the current pose. The 35 Hz simulation
+and phase-locked 60 Hz presentation schedule retain their original arithmetic.
+World and taxi texture filters remain in their material shaders; optional FXAA
+uses one presentation pass and is bypassed when disabled.
+
+Taxi base-color maps already use hardware sRGB decoding. HD skyline, dashboard,
+door and menu replacements still composite in the existing encoded color space;
+they do not have the manual linearization described in the audit. Their raw
+views are retained so the indexed palette, skyline key and fades keep matching.
+The indexed-material sharpening path still needs its linearization helpers.
+
+Display teardown clears its FPS interval and releases its GPU resources on game
+exit or startup failure. Existing worker handoff termination, listener abort
+controllers, halo depth-write settings and reflection draw/upload gates remain.
+The optional dynamic-offset uniform ring and pure-data module consolidation were
+not applied.
 
 When the manual challenge is enabled, the player types into the game screen. Enter submits, Backspace moves left,
 and another digit at the final position overwrites it. Touching the screen

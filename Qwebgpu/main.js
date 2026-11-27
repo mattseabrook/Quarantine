@@ -451,6 +451,8 @@ async function startGame() {
     status.textContent = error.message || 'Unable to start the game.';
   } finally {
     audioEvents.abort();
+    display?.close();
+    display = undefined;
     screen.hidden = form.hidden = true;
     launcher.hidden = false;
     start.disabled = folder.disabled = false;

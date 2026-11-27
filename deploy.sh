@@ -4,9 +4,12 @@ umask 077
 
 root=$(cd -- "$(dirname -- "$0")" && pwd)
 credentials="$HOME/.ovhcloud"
-for command in python3 ssh rsync mktemp; do
+for command in python3 ssh rsync mktemp npm; do
     command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
 done
+
+npm --prefix "$root/Qwebgpu" ci --no-audit --no-fund
+npm --prefix "$root/Qwebgpu" run build
 
 identity=$(python3 - "$credentials" <<'PY'
 import ipaddress
@@ -65,9 +68,11 @@ echo "Staging deployment at $stage"
 ssh "${ssh_options[@]}" "$ssh_target" "mkdir -p '$stage/site' '$stage/service'"
 
 rsync -rlt --no-perms -e "$transport" \
-    --include='/vendor/***' --include='/*.js' --include=/config.json \
-    --include=/index.html --include=/style.css --exclude='*' \
-    "$root/Qwebgpu/" "$rsync_target:$stage/site/"
+    --include='/vendor/***' --include='/*.js' --include='/*.js.br' \
+    --include='/*.map' --include='/*.map.br' --include='/*.txt' --include='/*.txt.br' \
+    --include='/*.css' --include='/*.css.br' --include=/LICENSE --include=/config.json \
+    --include=/index.html --include=/index.html.br --exclude='*' \
+    "$root/Qwebgpu/dist/" "$rsync_target:$stage/site/"
 rsync -rlt --no-perms -e "$transport" "$root/DEMO/" "$rsync_target:$stage/site/QDEMO/"
 rsync -rlt --no-perms -e "$transport" "$root/services/qdemo/server.py" \
     "$root/services/qdemo/qdemo.service" "$rsync_target:$stage/service/"

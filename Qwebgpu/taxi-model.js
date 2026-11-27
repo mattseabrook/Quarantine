@@ -1,4 +1,4 @@
-import {Box3, Matrix3, Matrix4, Vector3} from './vendor/three/three.core.js';
+import {Box3, Matrix3, Matrix4, Vector3} from './model-math.js';
 import {uploadBitmap} from './hd-images.js';
 import {cabBody,rideHeight} from './cab-dimensions.js';
 

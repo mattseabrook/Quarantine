@@ -3,6 +3,7 @@
 import io
 import ipaddress
 import json
+import re
 import ssl
 import sys
 import threading
@@ -46,7 +47,7 @@ class GameHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=root, **kwargs)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", getattr(self, "cache_policy", "no-store"))
         super().end_headers()
 
     def reply(self, body, content_type):
@@ -56,7 +57,42 @@ class GameHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return io.BytesIO(body)
 
+    def send_static(self, target):
+        if re.fullmatch(r".+-[A-Za-z0-9_-]{8,16}\.(?:js|css)(?:\.map|\.LEGAL\.txt)?", target.name):
+            self.cache_policy = "public, max-age=31536000, immutable"
+        # Match the original resource's MIME type; only the wire representation changes.
+        encodings = {}
+        for item in self.headers.get("Accept-Encoding", "").lower().split(","):
+            name, *parameters = item.strip().split(";")
+            quality = 1.0
+            for parameter in parameters:
+                key, separator, value = parameter.strip().partition("=")
+                if key == "q" and separator:
+                    try:
+                        quality = float(value)
+                    except ValueError:
+                        quality = 0.0
+            encodings[name] = quality
+        compressed = target.with_name(target.name + ".br")
+        brotli = encodings.get("br", encodings.get("*", 0)) > 0 and compressed.is_file()
+        selected = compressed if brotli else target
+        try:
+            stream = selected.open("rb")
+        except OSError:
+            self.send_error(404)
+            return None
+        self.send_response(200)
+        self.send_header("Content-Type", self.guess_type(str(target)))
+        self.send_header("Content-Length", str(selected.stat().st_size))
+        self.send_header("Last-Modified", self.date_time_string(target.stat().st_mtime))
+        self.send_header("Vary", "Accept-Encoding")
+        if brotli:
+            self.send_header("Content-Encoding", "br")
+        self.end_headers()
+        return stream
+
     def send_head(self):
+        self.cache_policy = "no-store"
         path = urlsplit(self.path).path
         loopback = self.client_address[0] == "127.0.0.1" and self.headers.get("Host") in (
             "localhost:8000", "127.0.0.1:8000"
@@ -91,8 +127,7 @@ class GameHandler(SimpleHTTPRequestHandler):
             if demo and (retail or target not in demo_hd):
                 self.send_error(404)
                 return None
-        del self.headers["If-Modified-Since"]
-        return super().send_head()
+        return self.send_static(target)
 
     def log_request(self, code="-", size="-"):
         if self.path != "/__qwebgpu_revision" or code != 200:

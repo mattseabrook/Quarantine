@@ -7,6 +7,10 @@ import {cabBody, chaseRange, rideHeight, supportRadius} from './cab-dimensions.j
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
 export const ticksPerSecond = 35;
 const fullTurn = 5760, quarter = 1440;
+const brakeAcceleration = Math.trunc(-976/ticksPerSecond)*64;
+const steeringTurn = Math.trunc(1000/ticksPerSecond), steeringCenter = Math.trunc(1536/ticksPerSecond);
+const yawDamping = Math.trunc(320/ticksPerSecond), gravityStep = Math.trunc(160*12/ticksPerSecond);
+const landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
 // Windshield framing, measured from the dashboard and horizon at the default FOV.
 const windshieldYaw = -10.5*Math.PI/180, windshieldPitch = 7*Math.PI/180;
 
@@ -338,7 +342,7 @@ function followFloor(car,district) {
   }
   if (car.z < support) {
     // DS:FAE0 is entry 160 of the rate-adjusted table built at 0x108BA.
-    car.fallSpeed += Math.trunc(160*12/ticksPerSecond);
+    car.fallSpeed += gravityStep;
     car.z = Math.min(support,car.z+(car.fallSpeed>>6));
   } else {
     car.z = support;
@@ -365,7 +369,7 @@ export function driveTick(car, district, keys) {
       if (offsets[car.landingStep] === 99 || car.landingStep >= offsets.length) {
         car.landingStep = 0; car.seatEffect = null;
       }
-      else if (!car.demo) car.landingDelay = Math.max(1,Math.trunc(12/ticksPerSecond));
+      else if (!car.demo) car.landingDelay = landingDelay;
     }
   }
   const heading = car.angle+(car.yawSlip>>2);
@@ -385,14 +389,14 @@ function moveCab(car, district, keys) {
     car.speed += impulse;
     if (car.speed < 0) car.speed += impulse;
   } else if (keys.has('KeyS') || keys.has('ArrowDown') || keys.has('Numpad2')) {
-    car.speed += Math.trunc(-976/hz)*64;
+    car.speed += brakeAcceleration;
   } else {
     car.skidMode = false;
     car.speed -= Math.sign(car.speed)*Math.min(Math.abs(car.speed),256);
   }
   car.speed = Math.max(-100*256,car.speed);
 
-  const turn = Math.trunc(1000/hz), center = Math.trunc(1536/hz);
+  const turn = steeringTurn, center = steeringCenter;
   const alt = keys.has('AltLeft') || keys.has('AltRight');
   // Left has priority when both directions are down (0x1AF0C).
   if (!alt && (keys.has('KeyA') || keys.has('ArrowLeft') || keys.has('Numpad4'))) {
@@ -410,7 +414,7 @@ function moveCab(car, district, keys) {
   if (car.skidMode && car.steering) {
     car.yawSlipRate += Math.trunc(Math.trunc(3*car.steering*alignment/75)/hz) >> 4;
   } else if (velocity > 10) {
-    const damping = Math.trunc(320/hz);
+    const damping = yawDamping;
     car.yawSlipRate -= Math.sign(car.yawSlip)*damping;
     if ((car.previousYawSlip ^ car.yawSlip) < 0) {
       car.yawSlipRate >>= 1;

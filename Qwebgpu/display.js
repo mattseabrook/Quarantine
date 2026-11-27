@@ -80,7 +80,7 @@ export async function createDisplay(canvas) {
   const fpsCounters = document.querySelectorAll('[data-fps]');
   let submittedFrames = 0, sampleTime = performance.now();
   function recordFrame() { submittedFrames++; }
-  setInterval(() => {
+  const fpsInterval = setInterval(() => {
     const now = performance.now(), elapsed = now-sampleTime;
     const text = Math.round(submittedFrames*1000/elapsed)+' FPS';
     for (const counter of fpsCounters) counter.textContent = text;
@@ -121,6 +121,15 @@ export async function createDisplay(canvas) {
   const rgba = new Uint8Array(256 * 4).fill(255);
   return {
     device, context, format, postprocess, recordFrame,
+    close() {
+      clearInterval(fpsInterval);
+      postprocess.close();
+      hdTexture?.destroy();
+      for (const texture of [pixels,colors,movie,coverage,fallback]) texture.destroy();
+      layout.destroy();
+      context.unconfigure();
+      device.destroy();
+    },
     presentIndexed(frame, dac, pixelsChanged, linear = false, paletteChanged = true, replacement) {
       if (replacement && currentBitmap !== replacement.bitmap) {
         currentBitmap = replacement.bitmap;

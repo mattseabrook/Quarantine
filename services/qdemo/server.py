@@ -1,6 +1,7 @@
 """Serve a demo-only Qwebgpu deployment behind a local reverse proxy."""
 
 import argparse
+import re
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -28,10 +29,45 @@ def main():
             super().__init__(*handler_args, directory=str(root), **kwargs)
 
         def end_headers(self):
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", getattr(self, "cache_policy", "no-store"))
             super().end_headers()
 
+        def send_static(self, target):
+            if re.fullmatch(r".+-[A-Za-z0-9_-]{8,16}\.(?:js|css)(?:\.map|\.LEGAL\.txt)?", target.name):
+                self.cache_policy = "public, max-age=31536000, immutable"
+            # Match the original resource's MIME type; only the wire representation changes.
+            encodings = {}
+            for item in self.headers.get("Accept-Encoding", "").lower().split(","):
+                name, *parameters = item.strip().split(";")
+                quality = 1.0
+                for parameter in parameters:
+                    key, separator, value = parameter.strip().partition("=")
+                    if key == "q" and separator:
+                        try:
+                            quality = float(value)
+                        except ValueError:
+                            quality = 0.0
+                encodings[name] = quality
+            compressed = target.with_name(target.name + ".br")
+            brotli = encodings.get("br", encodings.get("*", 0)) > 0 and compressed.is_file()
+            selected = compressed if brotli else target
+            try:
+                stream = selected.open("rb")
+            except OSError:
+                self.send_error(404)
+                return None
+            self.send_response(200)
+            self.send_header("Content-Type", self.guess_type(str(target)))
+            self.send_header("Content-Length", str(selected.stat().st_size))
+            self.send_header("Last-Modified", self.date_time_string(target.stat().st_mtime))
+            self.send_header("Vary", "Accept-Encoding")
+            if brotli:
+                self.send_header("Content-Encoding", "br")
+            self.end_headers()
+            return stream
+
         def send_head(self):
+            self.cache_policy = "no-store"
             url_path = urlsplit(self.path).path
             if url_path == "/":
                 self.path = "/index.html"
@@ -47,8 +83,7 @@ def main():
                 parts[0] == "MS-DOS" or parts[0] == "graphics"):
                 self.send_error(404)
                 return None
-            del self.headers["If-Modified-Since"]
-            return super().send_head()
+            return self.send_static(target)
 
     with ThreadingHTTPServer(("127.0.0.1", args.port), Handler) as server:
         server.serve_forever()
