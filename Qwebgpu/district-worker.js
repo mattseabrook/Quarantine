@@ -2,6 +2,7 @@ import {streetLightGrid} from './street-lights.js';
 import {districtMesh, cockpitTexture, wallFlags, wallDepthLayers} from './district-mesh.js';
 import {readScreen, readSpriteBank} from './indexed-screen.js';
 import {readMaskFont} from './intro.js';
+import {architectureBlocks} from './architecture.js';
 
 function readMap(bytes, name) {
   const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
@@ -44,6 +45,9 @@ function readBlocks(bytes, name) {
       const repeats = data.getInt8(offset);
       const dx = signed(offset+2), dy = signed(offset+4), height = signed(offset+6);
       const x = signed(offset+8), y = signed(offset+10), z = signed(offset+12);
+      // SKIPIT 0x40DB1..0x40DBF / QDEMO 0x44602..0x44618 use
+      // the signed span directly: top = base Z - span, bottom = base Z.
+      // Keep district heights independent of replacement-vehicle calibration.
       const sectioned = signed(offset+14) < 0;
       const across = sectioned ? repeats : 1;
       if (repeats > 0 && height > 0 && (dx || dy)) {
@@ -288,7 +292,7 @@ async function prepare(part, files, start) {
     return readSpriteBank(raw,raw[0],{planar:false});
   }));
   const grid = readMap(map,start.map);
-  const mesh = districtMesh({grid,gun,flash,gunViews:start.actorScan?.gunViews,missile,missileViews:start.actorScan?.missileViews,blastOffsets:start.actorScan?.blastOffsets,hazardFrames:[city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks,floor,sky,banks,flags,animations,districtId:start.district,
+  const mesh = districtMesh({grid,gun,flash,gunViews:start.actorScan?.gunViews,missile,missileViews:start.actorScan?.missileViews,blastOffsets:start.actorScan?.blastOffsets,hazardFrames:[city[12],...blast.slice(12,24),gun[0],...tracer.slice(0,4)],blocks:architectureBlocks(blocks,{bankNames:start.wallBanks,districtId:start.district}),floor,sky,banks,flags,animations,districtId:start.district,
     bankNames:start.wallBanks,panorama:start.panorama,flatSkyIndex});
   const wallDepth = wallDepthLayers(blocks,grid,flags);
   // The CPU driver only needs vertical segments. Send flat collision arrays,

@@ -1,6 +1,10 @@
 ; Analyzer entry: 0002cff0
 ; Analyzer symbol: FUN_0002cff0
 ; Boundary and name are provisional until independently verified.
+; Recovered role: queue_cab_hit_feedback. Unlike QDEMO 0x34F2C this entry
+; does not call the hull/armor damage routine (SKIPIT 0x31F88). The wall-tracer
+; callback 0x4DB28 calls here with EAX=0, EDX=0, EBX=3; 3 is not subtracted
+; from hull by this routine. Do not infer hull damage from the demo wrapper.
 
 %macro emit_function_0002cff0_part_00 0
     %%fragment_start:

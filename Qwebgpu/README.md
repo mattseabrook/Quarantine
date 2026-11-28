@@ -52,7 +52,7 @@ overrides. Demo Core loads the original mine, wall gun, muzzle flash, tracer and
 original menu are not yet ported; demo shading and other renderer differences
 also need work. This is not yet demo parity.
 The demo jump and gravity updates use QDEMO's rate-adjusted movement table
-(`floor(20*i/rate)`, minimum one for nonzero entries), evaluated at the browser's
+(`floor(12*i/rate)`, minimum one for nonzero entries), evaluated at the browser's
 fixed 35 Hz step; retail uses a different vertical-motion path.
 The power-60 jump also seeds QDEMO's rate-adjusted landing counter; the browser
 consumes that counter at touchdown and preserves its residual power. The queued
@@ -180,13 +180,35 @@ one second. Static menus may show zero; it is not a GPU completion or display
 refresh measurement. Gameplay targets 60 FPS, but the counter does not
 guarantee that the GPU or display presents every submitted frame.
 
-The street camera uses the simulated cab origin and seat displacement. The HD
-cockpit is positioned around that eye. The exterior model retains its proportions
-and fits the longitudinal span between the original front and rear floor
-samples. Including the roof sign, the supplied GLB then measures 181.26 long,
-68.29 wide and 61.65 high in world units. SKIPIT provides no exterior mesh dimensions.
-Chase orbits the fitted model's vertical center. Wall contact uses five
-120-unit probes. Floor support uses the center and four 100-unit probes.
+The accepted exterior size is restored: the supplied GLB measures approximately
+181.26 long, 68.29 wide and 61.65 high, including its sign. The temporary
+20-unit modeled-eye calibration made the car too small beside street signs and
+has been removed. These are replacement-model proportions, not recovered DOS
+exterior dimensions. The HD cockpit retains its seat alignment and proportions.
+
+Both retail and demo now present architecture at a uniform 2.3× scale on X, Y
+and Z, with the Z=20 street plane fixed. Wall materials retain their original
+proportions and floor texture coordinates retain their original repeat counts.
+MAP cell origins, walls, raised floors, roof caps and wall lights use the same
+transform. Antenna and rooftop assemblies scale their sprite dimensions along
+with the spacing between pieces; shifting only their bases had created gaps.
+Street lamps, stop signs and vehicles keep their accepted dimensions, while
+their map positions follow the enlarged district. The camera follows that
+placement and chase obstruction uses the displayed geometry. BSP depth ordering
+converts the eye position back to original BLK coordinates on every axis.
+
+This is an HD presentation adjustment. The decoded BLK records and simulation
+collision/support tables retain the DOS values. Missile and tracer positions,
+hit checks, damage and timing retain their existing simulation rules; a cab's
+attached impact blast follows the rendered cab when it is on a raised floor.
+Chase orbits the fitted model's vertical center. Car-to-wall contact sweeps the
+fitted body's oriented box, converting its dimensions back through the 2.3×
+world scale. It covers the complete wall segment, including short segments
+between the former probes, and advances the cab to the point of contact.
+Retail floor support uses the center and the fitted body's four corners;
+demo floor support keeps its original center query. The former 120-unit wall
+and 100-unit floor offsets extended far beyond the visible car after scaling.
+Projectile obstruction and projectile-to-cab hit rules remain independent.
 The two white beams originate at the front faces of the GLB headlamp lenses and
 follow the cab heading in either view. They illuminate indexed roads, walls and
 placed sprites. The lenses and their depth-tested halos are visible from the front.
@@ -194,17 +216,20 @@ Beam range is 850 world units. The lighting model has no headlight shadow map.
 The rear lenses have a dim running glow and become solid red with a brighter
 glow and road spill while the brake/reverse key is held.
 
-The taxi hides its wheel and hub assemblies while preserving the original model
-fit and collision bounds. A baby-blue hover glow follows the cab and lights the
+The taxi hides its wheel and hub assemblies while preserving the accepted model
+fit. Collision bounds use the visible geometry, so hidden wheels cannot collide
+with a curb beneath the hover body. A baby-blue glow follows the cab and lights the
 ground below it. The model uses its 28 embedded images at their supplied
 resolution, including the 2048-pixel maps. Materials use their base color, metallic, roughness
 and normal inputs. Window glass blends over the interior and street. The renderer
 generates mipmaps for distant views and uses anisotropic filtering.
 Chrome reflects a 128-pixel world cubemap centered on the cab. Settings controls
 its face-update rate from Off to 60 updates per second; the default is 20 to
-reduce rendering work. Off uses sky reflections instead. All six faces refresh
-when the setting is enabled or changed; later updates can lag during fast
-movement. Reflections do not include the cab or clouds.
+reduce rendering work. Off uses sky reflections and skips reflection draws and
+uniform uploads. Enabling or changing the setting refreshes one face per presented
+frame for six frames, then returns to the selected update rate. Mixed old/new
+faces can appear during that refresh; later updates can lag during fast movement.
+Reflections do not include the cab or clouds.
 
 The model is *FREE 1950s American Taxi (based on Checker)* by Libau Media. The
 port applies placement and uniform scale at load time. [Original model](https://sketchfab.com/3d-models/free-1950s-american-taxi-based-on-checker-d1b10defaed94a1094419e84ca9b0bf1) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
@@ -243,7 +268,9 @@ destination modes are not yet simulated.
 
 Gameplay targets **60 presentations per second** with one full-detail path.
 Three workers prepare the map and lookup tables, world geometry and materials,
-and cockpit art concurrently. The GPU clips, projects, textures and
+and cockpit art concurrently. A separate short-lived worker parses each HD GLB
+and assembles its fitted geometry before transferring the arrays for GPU upload.
+The GPU clips, projects, textures and
 depth-tests the world, draws repeated blocks as instances, applies the district
 wall material's backface, transparency and collision flags, and draws the
 taxi from `HD/cars/taxi/taxi.glb`. Installations without the GLB use the retail-art cabin and exterior box. The browser renders the full finite MAP rather than SKIPIT's 49-cell neighborhood, grouping shared geometry into frustum-culled instances. Distant surfaces retain the dark palette and haze, while illuminated surfaces, emitters and halos remain visible. A separate 35 Hz fixed step runs
@@ -271,11 +298,21 @@ The district actor scanner now activates mine-family MAP markers and the four
 directional wall-gun blocks and five missile-launcher block types in KCITY. Mines use the retail XY and Z overlap,
 district damage word, jump impulse, blast frames and pair of explosion cues.
 Unarmoured cab health starts at 400 and is visible in the console. Directional
-guns fire ETRACERS sprites on their sweep and burst schedule. Qwebgpu applies
-10 hull damage per wall-tracer hit as a gameplay choice. Missile walls
+guns fire ETRACERS sprites on their sweep and burst schedule. Demo tracers apply
+3 damage to an unarmoured cab; the retail tracer callback queues its hit reaction
+without subtracting hull. The previous added 10-point retail penalty is removed.
+Missile walls
 alternate their two retail firing positions and headings, play FIREBELC.VOC,
 and use directional EMISSILE sprites. A head-on missile impact follows the cab for its twelve blast frames. KCITY missiles deal 70 unarmoured damage. The browser uses
-its existing wall sweep for projectile obstruction. The complete damage, death,
+its existing wall sweep for projectile obstruction. Tracer centers stay at world
+Z=-20 in demo and Z=-16 in retail, at DOS scale 192 (half the gun's 384).
+Missiles launch at Z=-16 and add four per update while below zero. Both games'
+logical hit checks accept absolute projectile Z >= -25 and strict XY offsets
+inside ±48; those checks do not use the replacement model's bounds or the camera.
+Tracers check cab contact before wall obstruction; missiles check obstruction
+first. A projectile can therefore register a hit outside the visible mesh.
+The original contact region is retained instead of bending shots toward the
+replacement body. The complete damage, death,
 shared actor scheduling and other weapon paths remain open.
 
 The inaccessible backs of one-sided facades render opaque black below their
@@ -438,8 +475,8 @@ The browser port runs as local JavaScript modules and requires no build step.
 ### Production package
 
 Run `npm ci --no-audit --no-fund` and `npm run build` in `Qwebgpu` to generate
-`dist/`. The production entry, separate district/AVI workers and stylesheet have
-hashed filenames. JavaScript uses esbuild's ES2022 minification with source maps;
+`dist/`. The production entry, separate district/AVI/vehicle workers, ESM chunks
+and stylesheet have hashed filenames. JavaScript uses esbuild's ES2022 minification with source maps;
 the build does not enable unsafe arithmetic transforms. Worker URLs point to the
 generated worker filenames. Brotli sidecars accompany the text resources.
 Game files and HD assets remain separate from this generated code package.
@@ -447,12 +484,18 @@ Game files and HD assets remain separate from this generated code package.
 `../deploy.sh` builds this package and stages it with the existing allowlisted
 assets. Both included servers negotiate precompressed `.br` resources and mark
 hashed JavaScript/CSS immutable for one year. HTML and configuration remain
-uncached. The LAN service continues serving the editable source modules.
+uncached. The LAN service continues serving the editable source modules and
+blocks npm tooling, dependency directories, tests and the audit dump.
+`npm run clean` removes generated output and any interrupted build staging.
 
 `vendor/truemotion1/` is copied byte-for-byte, with its readable decoder,
 codebook and `COPYING.LGPLv2.1`; it remains external to the minified bundles.
 The renderer and GLB loader have no Three.js dependency. Model loading uses
 only the local affine math operations in `model-math.js`.
+`taxi-manifest.js` centralizes frozen asset paths, node names and mounting
+calibration. The vehicle worker chooses 16-bit indices when every final rebased
+index fits; larger meshes retain 32-bit indices. Model coordinates, collision
+bounds and weapon placement use the same fitting calculations as before.
 
 Pavement uses a periodic 256×256 R8 noise tile with all nine mip levels, baked
 once per district load, and explicit shader gradients. Its world-space noise

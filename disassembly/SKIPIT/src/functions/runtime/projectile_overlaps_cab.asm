@@ -1,6 +1,8 @@
 ; Runtime address: 0002694C
 ; Semantic name: projectile_overlaps_cab
 ; Evidence: Tests the current projectile at Z >= -25 against strict cab X/Y bounds of plus or minus 48.
+; The Z threshold is absolute. It is not a mesh roof, a camera-space height,
+; or a projectile-minus-player Z difference. Cab XYZ is used only for XY here.
 
 %macro emit_projectile_overlaps_cab_part_00 0
     %%fragment_start:

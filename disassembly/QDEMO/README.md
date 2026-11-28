@@ -61,7 +61,7 @@ Indirect dispatch and the behaviors of unnamed routines still need analysis.
   ascent at `DS:114D6` and copies the rate-adjusted table entry at `DS:D4BA`
   into the landing counter. [Vertical motion](src/functions/runtime/update_player_vertical_motion.asm)
   indexes `DS:D4AC` by power shifted right two, uses
-  `max(1, floor(20 * index / measuredRate))` for nonzero entries, and reduces
+  `max(1, floor(12 * index / measuredRate))` for nonzero entries, and reduces
   power by 12 each ascent tick. The J handler loads `DS:D4BA` (`D4AC[7]`)
   into the landing counter at `DS:114D4`; touchdown consumes one count and a
   positive remainder queues sound selector 4 if `DS:763C` is clear. Qwebgpu
@@ -183,3 +183,59 @@ The gameplay dispatcher at `0x29E50` increments the phase modulo four. Its jump 
 | `0x23694`, `0x23830`, `0x2D624` | The missile checks obstruction before cab overlap, applies 15 damage on a cab hit and selects the enemy missile view table at DS:6BC0. |
 
 These callbacks establish street mines, missiles and gun tracers. They do not establish a separate laser weapon or the player's available weapon loadout.
+
+## Building scale, support height and projectile geometry
+
+The BLK loader at `0x46FB4` uses the same signed wall fields as retail:
+disk `+6` is the world-unit span and `+12` is base Z. Reads at
+`0x4738D–0x473A4` insert two runtime bytes, moving those fields to `+8` and
+`+14`. BSP geometry at `0x47768–0x477A0` stores top Z = base Z − span
+and bottom Z = base Z. Render dispatch independently subtracts the span
+at `0x445BB–0x445C8` and `0x44602–0x44618`. Weapon King's two entrance
+panels use a 64-unit span at base Z 20 (top Z −44) in material variant 2
+of zero-based Core BLK records `0x34` and `0x35`, as in retail.
+
+The player support query at [`0x44ADC`](src/functions/runtime/find_floor_below_player.asm)
+was previously mislabeled as `find_player_ceiling`. It accepts first Y <
+opposite Y at `0x44B54–0x44B5A` and selects the smallest floor Z >= player Z
+at `0x44BB5–0x44BCF`, with positive Z downward. The caller at `0x347EE`
+subtracts 20 at `0x347FC`. This places the level-road eye 20 world units
+above the supporting floor; it does not define an exterior mesh length.
+The replacement exterior and chosen model eye are not original DOS assets.
+Qwebgpu retains the accepted 181.26-unit-long exterior; the temporary fit to
+the 20-unit modeled-eye reference made it too small relative to street signs
+and was removed. Both modes instead render architecture at a uniform 2.3× XYZ
+scale with street Z=20 fixed, including raised floors, roof caps and wall lights.
+MAP origins and camera/actor placement follow the enlarged XY coordinates.
+Antenna assemblies scale sprite dimensions together with their base spacing,
+preserving material proportions and keeping the original stacked pieces joined.
+Original BLK and simulation coordinates remain intact. This requested HD
+presentation adjustment is separate from the recovered DOS height formulas.
+
+Car-to-wall contact in the HD port uses the fitted cab box converted back
+through the inverse 2.3× presentation scale. Original 120-unit probes had
+become 276-unit displayed offsets and stopped the cab before its body reached
+the wall. This is a port-specific collision adaptation. The original QDEMO
+support-floor center query and projectile contact/obstruction rules are retained.
+
+The rate-table annotation also needed correction: [`0x11662–0x1166B`](src/functions/runtime/build_rate_adjustment_tables.asm)
+forms `(4*i - i)*4`, which is **12*i**, not 20*i. DS:D4AC therefore stores
+`floor(12*i/rate)`, with a minimum of one for nonzero indices. DS:D29C stores
+`max(1, floor(rate*i/12))`. The semantic instructions are unchanged; the old
+20*i comments and browser use were incorrect. The corrected browser formula
+also applies to demo hover/landing and projectile movement.
+
+The wall-gun mount has Z −28 at `0x21270–0x2127F`. Spawn adds eight at
+`0x21135–0x21153`, giving tracer world Z −20. Its scale is half the mount's
+384 (`0x210F1–0x210FC`), so the actor projector uses scale 192, or 0.375
+world units per sprite texel. The former browser tracer scale was doubled.
+Only slot zero starts with two sweep cycles (`0x212CC–0x212D5`); other
+noncentral slots start with one, then reset to two after a firing window.
+
+Missiles launch at Z −16 (`0x22967–0x22978`) with scale 384, then add four
+per update while negative (`0x2378A–0x2379B`). Missile damage is 15; tracer
+damage is 3 through the demo wrapper at `0x34F2C`. Retail's similarly placed
+feedback wrapper does not have that initial damage call. Both executables use
+strict ±48 XY bounds and absolute projectile Z >= −25. That logical contact
+region may extend above a visible replacement cab; neither its model bounds
+nor the chase camera may redefine the original checks.

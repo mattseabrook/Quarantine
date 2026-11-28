@@ -1,9 +1,11 @@
 // Two lighting bins along each 512-unit MAP tile. The GPU reads a directory
 // of offsets followed by lamp IDs, with one shared record per placed emitter.
-export const lightBinSize = 256;
+import {architectureScale,architectureCellSize} from './architecture.js';
+
+export const lightBinSize = 256*architectureScale;
 
 export function streetLightGrid({tiles,width,height,mesh,palette}) {
-  const cols = width*512/lightBinSize, rows = height*512/lightBinSize;
+  const cols = width*2, rows = height*2;
   const counts = new Uint32Array(cols*rows);
   let total = 0;
   tiles.forEach((word,i) => {
@@ -15,7 +17,7 @@ export function streetLightGrid({tiles,width,height,mesh,palette}) {
     if (!(word&127)) return;
     for (const [bx,by,z,radius,color,,intensity=1,rough=0,nx=0,ny=0,offset=0] of mesh.blockLights[(word&127)*4+((word>>>8)&3)]) {
       const c = color*3;
-      lights.set([(i%width)*512+bx,Math.floor(i/width)*512+by,z,1/(radius*radius),
+      lights.set([(i%width)*architectureCellSize+bx,Math.floor(i/width)*architectureCellSize+by,z,1/(radius*radius),
         intensity*(palette[c]/63)**2,intensity*(palette[c+1]/63)**2,
         intensity*(palette[c+2]/63)**2,rough,nx,ny,offset,0],12*id++);
     }

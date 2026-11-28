@@ -1,6 +1,12 @@
-; QDEMO 0x00044adc. Corresponding retail routine 0004168C (find_player_ceiling); inferred from instruction and operand sequence.
-; Retail evidence for this identification: Scans reverse-facing floors in the player's MAP cell for the nearest qualifying height above the player.
-find_player_ceiling:
+; QDEMO 0x00044ADC. Semantic role: find_floor_below_player.
+; Accepts the floor winding with first Y < opposite Y (0x44B54..0x44B5A),
+; checks the player's local XY, then chooses the smallest floor Z >= player Z
+; (0x44BB5..0x44BCF); positive Z points downward. Returns zero if none qualifies.
+; The caller at 0x347EE subtracts 20 at 0x347FC to place the player above it.
+; This is a support-floor query, comparable to retail 0x41484. The earlier
+; identification as retail find_player_ceiling (0x4168C) was incorrect: that
+; query accepts the opposite winding and searches above the player.
+find_floor_below_player:
     push ebx ; 00044adc 53
     push ecx ; 00044add 51
     push edx ; 00044ade 52

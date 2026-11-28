@@ -113,6 +113,13 @@ class GameHandler(SimpleHTTPRequestHandler):
         if not any(target.is_relative_to(base) for base in game_roots) or not target.is_file():
             self.send_error(404)
             return None
+        if target.is_relative_to(web_root.resolve()):
+            parts = target.relative_to(web_root.resolve()).parts
+            if (any(part.startswith(".") or part in ("node_modules", "dist", "dist.new") for part in parts)
+                    or target.name in ("package.json", "package-lock.json", "build.mjs", "build-meta.json", "files.txt")
+                    or target.name.endswith((".test.mjs", ".test.js"))):
+                self.send_error(404)
+                return None
         retail = any(target.is_relative_to(base) for base in retail_roots)
         if retail or target.is_relative_to(hd_root):
             try:

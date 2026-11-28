@@ -1,4 +1,7 @@
 ; QDEMO 0x20E20. Read the mount sweep and burst counters, submit a directional gun or muzzle flash, and allocate tracer callback 214B0.
+; Projectile geometry: 0x210F1..0x210FC halves mount scale 384 to 192;
+; 0x21135..0x21153 adds 8 to mount Z=-28, producing world Z=-20.
+; These fields do not use the cab's mesh dimensions or camera position.
 update_district_wall_gun:
     push ebx ; 00020e20 53
     push ecx ; 00020e21 51

@@ -6,6 +6,7 @@ import {createHDTexture} from './hd-images.js';
 import {taxiShader,prepareTaxiPipelines} from './taxi-material.js';
 import {textureFilterShader} from './texture-filter.js';
 import {createPavementTexture} from './pavement.js';
+import {architectureGroundZ,architectureScale,architectureCellSize,architectureXY,vehicleZ} from './architecture.js';
 import {cloudResolutionDivisor, cloudTargetFormat, prepareCloudPipeline, skylineKey, skyResources} from './skybox.js';
 
 const cabinHalfWidth = 26, windshieldDistance = 22, cabinTopClearance = 19;
@@ -109,7 +110,8 @@ struct Surface {
   // Reverse depth keeps distant map cells precise without a far clipping plane.
   out.pos = vec4f(dot(d,right)*view.scale.x,-down*view.scale.y,view.backdrop.x,depth);
   if (surface != 0u) {
-    let bias = (view.backdrop.x/12.0)*0.000004*painterRank(surface,vec3f(view.eye.xy-cell.xy,view.eye.z));
+    let originalEyeZ = ${architectureGroundZ}f+(view.eye.z-${architectureGroundZ}f)/${architectureScale};
+    let bias = (view.backdrop.x/12.0)*0.000004*painterRank(surface,vec3f((view.eye.xy-cell.xy)/${architectureScale},originalEyeZ));
     out.pos.z += min(max(depth-out.pos.z,0.0),bias);
   }
   out.uv = uv; out.rect = rect; out.transparent = select(0.0,1.0,placed);
@@ -135,7 +137,7 @@ struct Surface {
       flags = (flags & 62u) | mask;
     }
     out.flags = f32(flags);
-    let tile = u32(cell.y/512.0)*u32(view.scale.z)+u32(cell.x/512.0);
+    let tile = u32(round(cell.y/${architectureCellSize}))*u32(view.scale.z)+u32(round(cell.x/${architectureCellSize}));
     let layers = wallDepth[tile];
     if (layers != 0u) {
       // Resolve depth ties without moving vertices or changing the UVs.
@@ -154,8 +156,8 @@ struct Surface {
   return out;
 }
 fn lampRange(worldPos: vec3f) -> vec2u {
-  let cell = vec2i(floor(worldPos.xy/${lightBinSize}.0));
-  let size = vec2i(view.scale.zw)*${512/lightBinSize};
+  let cell = vec2i(floor(worldPos.xy/${lightBinSize}f));
+  let size = vec2i(view.scale.zw)*2;
   if (any(cell < vec2i(0)) || any(cell >= size)) { return vec2u(0); }
   let bin = u32(cell.y*size.x+cell.x);
   return vec2u(lightBins[bin],lightBins[bin+1u]);
@@ -409,11 +411,11 @@ struct CabVertex {
   let face = i/6u;
   let uv = corners[i%6u];
   let interior = view.player.w == 0.0;
-  let halfWidth = select(${cabBody.width/2},${cabinHalfWidth}.0,interior);
-  let front = select(${cabBody.length/2},${windshieldDistance}.0,interior);
+  let halfWidth = select(${cabBody.width/2},${cabinHalfWidth}f,interior);
+  let front = select(${cabBody.length/2},${windshieldDistance}f,interior);
   let rear = select(-${cabBody.length/2},-48.0,interior);
-  let top = select(${cabBody.base-cabBody.height}.0,-${cabinTopClearance}.0,interior);
-  let bottom = select(${cabBody.base}.0,20.0,interior);
+  let top = select(${cabBody.base-cabBody.height}f,-${cabinTopClearance}f,interior);
+  let bottom = select(${cabBody.base}f,20.0,interior);
   let x = mix(-halfWidth,halfWidth,uv.x);
   let y = mix(rear,front,uv.x);
   let z = mix(top,bottom,uv.y);
@@ -561,7 +563,13 @@ export function prepareCabPipelines(display) {
 }
 
 async function buildPipelines({device,format}) {
-  const module = device.createShaderModule({code:shader+taxiShader});
+  const module = device.createShaderModule({label:'District and taxi shader',code:shader+taxiShader});
+  const compilation = await module.getCompilationInfo();
+  const errors = compilation.messages.filter(message => message.type==='error');
+  if (errors.length) {
+    throw new Error('District shader: '+errors.map(message =>
+      `line ${message.lineNum}:${message.linePos}: ${message.message}`).join('\n'));
+  }
   const bindLayout = device.createBindGroupLayout({entries:[
     {binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}},
     ...['uint','float','uint'].map((sampleType,i) => ({
@@ -630,7 +638,7 @@ function districtDraws({width,tiles,mesh}) {
     const id = (tile&127)*4+((tile>>>8)&3);
     const range = mesh.ranges[id];
     if (!range?.count) return;
-    const x = i%width*512, y = Math.floor(i/width)*512;
+    const x = i%width*architectureCellSize, y = Math.floor(i/width)*architectureCellSize;
     const haloFirst = halos.length/7;
     for (const [bx,by,z,,color,radius,,,nx=0,ny=0] of mesh.blockLights[id]) {
       if (radius > 0) halos.push(x+bx,y+by,z,radius,color,nx,ny);
@@ -831,8 +839,31 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     group = device.createBindGroup({layout:bindLayout,entries:[...bindings,{binding:12,resource:cloudView},
       {binding:15,resource:reflectionView}]});
   }
+  const renderedCar = {};
+  const actorInstances = new WeakMap();
   function draw(car,welcome,brightness=1) {
     const camera = cameraPose(car,district);
+    const originalCar = car;
+    Object.assign(renderedCar,car);
+    renderedCar.x=architectureXY(car.x);
+    renderedCar.y=architectureXY(car.y);
+    renderedCar.z=vehicleZ(car.z);
+    car=renderedCar;
+    function renderedActor(actor) {
+      let instance=actorInstances.get(actor);
+      if (!instance) { instance={}; actorInstances.set(actor,instance); }
+      Object.assign(instance,actor);
+      instance.x=architectureXY(actor.x);
+      instance.y=architectureXY(actor.y);
+      if (actor.frontImpact) {
+        // The cab retains its dimensions, so attached effects retain their
+        // cab-local offsets even though MAP/world placement is enlarged.
+        instance.x=car.x+(actor.x-originalCar.x);
+        instance.y=car.y+(actor.y-originalCar.y);
+        instance.z=car.z+(actor.z-originalCar.z);
+      }
+      return instance;
+    }
     const wheel = 3+Math.sign(car.steering)*[70,210,350].filter(n => Math.abs(car.steering)>n).length;
     // The 64-degree detent represents SKIPIT's 256-pixel focal length
     // across a 320-pixel viewport (0x30DC8).
@@ -841,14 +872,17 @@ export function createCabView(canvas, {device, context, format, postprocess, rec
     const cosPitch = Math.cos(camera.pitch), sinPitch = Math.sin(camera.pitch);
     uniforms[32] = 0.5;
     for (const group of actors) group.cells.length = 0;
-    for (const mine of car.hazards.mines.values()) hazardGroups[mine.frame+1].cells.push(mine);
+    for (const mine of car.hazards.mines.values()) hazardGroups[mine.frame+1].cells.push(renderedActor(mine));
     for (const gun of car.hazards.guns.values()) if (gun.launcher===undefined) {
-      (turretGroups[gun.image] ?? hazardGroups[13]).cells.push(gun);
+      (turretGroups[gun.image] ?? hazardGroups[13]).cells.push(renderedActor(gun));
     }
     for (const shot of car.hazards.shots) {
-      if (shot.blast!==undefined) blastGroups[shot.blast+(shot.frontImpact ? 24 : shot.flash ? 12 : 0)].cells.push(shot);
-      else if (shot.missile) missileGroups[2*shot.image+Number(shot.flip)].cells.push(shot);
-      else hazardGroups[(shot.flip ? 18 : 14)+shot.image].cells.push(shot);
+      const instance=renderedActor(shot);
+      if (shot.blast!==undefined) {
+        blastGroups[shot.blast+(shot.frontImpact ? 24 : shot.flash ? 12 : 0)].cells.push(instance);
+      }
+      else if (shot.missile) missileGroups[2*shot.image+Number(shot.flip)].cells.push(instance);
+      else hazardGroups[(shot.flip ? 18 : 14)+shot.image].cells.push(instance);
     }
     const {visible,instanceCount,haloCount} = visibleDistrict(groups,camera,sx,sy,instanceData,halos,haloData);
     streetStats = {batches:visible.length,instances:instanceCount,vertices:mesh.vertices.length/12};

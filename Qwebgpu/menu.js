@@ -11,6 +11,8 @@ import {settings, settingsPanel, openSettings} from './settings.js';
 const coldRows = [0, 2, 4];
 const labels = ['New Game', 'Resume', 'Load', 'Save', 'Quit Game'];
 const menuX = 88;
+const altMovementKeys = new Set(['KeyW','KeyS','KeyA','KeyD','ArrowUp','ArrowDown',
+  'ArrowLeft','ArrowRight','Numpad8','Numpad2','Numpad4','Numpad6']);
 
 // Consume a single DOS-style key press. Holding Enter across a fade should
 // not select the first slot on the next screen.
@@ -272,8 +274,7 @@ export async function enterCab({display, screen, getAudioTrack, bytes, audio, cl
         if (drivingInput() && !session.welcome) held.add(e.code);
         return;
       }
-      if (e.ctrlKey || e.metaKey || (e.altKey && !['KeyW','KeyS','KeyA','KeyD',
-        'ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Numpad8','Numpad2','Numpad4','Numpad6'].includes(e.code)) || e.key === 'Tab') return;
+      if (e.ctrlKey || e.metaKey || (e.altKey && !altMovementKeys.has(e.code)) || e.key === 'Tab') return;
       if (e.code === 'Backquote') {
         e.preventDefault();
         if (e.repeat) return;

@@ -864,8 +864,8 @@ position relative to the material normal, the eye, and the cab’s roughness map
 | Component | Geometry and behavior |
 | --- | --- |
 | Cockpit | The world camera uses the simulated cab origin and seat displacement. The HD cockpit offsets its modeled seat to that eye. Cockpit and chase share its geometry and materials. The original welcome lettering appears over the model. Head movement spans 100° to either side and 45° up or down. |
-| HD model fit | On a level road, `0x31AF7` subtracts 20 from the supporting floor to set the vehicle origin. Qwebgpu uniformly scales the exterior to the longitudinal spacing of the front and rear floor samples, about 181 units. One MAP cell spans 512 units. |
-| Calibration | The support span supplies an exterior length reference. The GLB supplies its proportions. SKIPIT has separate distances for walls, floor support and projectile hits. |
+| HD model fit | The accepted 181.26 × 68.29 × 61.65-unit exterior is restored. Its body proportions and seat alignment remain model choices; DOS does not supply that exterior mesh. One MAP cell spans 512 units. |
+| Architecture scale | Both modes apply a uniform 2.3× XYZ scale to architecture and MAP placement, keeping street Z=20 fixed and preserving material proportions. Antenna sprite stacks enlarge with their anchor spacing. Street lamps, stop signs and vehicles retain their accepted dimensions. BLK and simulation tables retain DOS coordinates; chase clearance uses displayed geometry. This is an HD presentation adjustment, not a recovered DOS multiplier. |
 | Chase camera | F toggles the view. The boom ranges from 106 to 600 units, initially 235. A continuous trace shortens it where it crosses BLK wall panels, floors and decks. |
 
 At `0x2620A`, SKIPIT forms five headings around the direction of travel in
@@ -874,7 +874,12 @@ heading components by 120 and shifts by 11 to undo the sine table's scale.
 At `0x26392` it traces the displacement between old and new probe positions.
 The wall routine filters by height and uses the first material pair of the BLK
 wall run to check back-side contact (bit 1) and non-solid crossings (bit 3).
-Qwebgpu traces each previous probe position to its candidate position, using the movement heading. Impact response is approximate. Full DOS damage and airborne contact remain open.
+Those are the original DOS probe distances. The HD port instead sweeps the
+fitted cab box, converting its dimensions by the inverse 2.3× presentation
+scale so contact matches the visible body. Retail support queries use its four
+corners and center. Projectile point sweeps keep their separate original
+coordinates. Impact response is approximate. Full DOS damage and airborne
+contact remain open.
 [Recovered movement routine](disassembly/SKIPIT/src/functions/runtime/resolve_player_wall_contact.asm).
 
 For placed fixtures, `0x40A7C` accepts origins strictly within 50 world units to either side and between 0 and 100 units in the direction of travel. The first eligible placement in draw order supplies its OBJ page and image, including when its class has no driving response. Classes 4–6 push sideways at quarter, full and double speed. Class 7 stops the cab, class 8 reverses part of its speed, and class 9 adjusts the speed accumulator. Qwebgpu collects the candidate at the cab on each 35 Hz driving tick. Free look, chase and reflection views can move independently. [Street contact implementation](Qwebgpu/street-contact.js) · [Retail class dispatch](disassembly/SKIPIT/src/functions/runtime/resolve_player_sprite_contact.asm).

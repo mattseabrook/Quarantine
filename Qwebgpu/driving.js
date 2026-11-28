@@ -1,7 +1,8 @@
 import {tickDistrictHazards} from './district-hazards.js';
 import {bearing,sine} from './bearing.js';
 import {projectedStreetContact,resolveStreetContact} from './street-contact.js';
-import {cabBody, chaseRange, rideHeight, supportRadius} from './cab-dimensions.js';
+import {cabBody, chaseRange, rideHeight} from './cab-dimensions.js';
+import {architectureZ,architectureXY,architectureScale,architectureCellSize,vehicleZ} from './architecture.js';
 
 // DOS 0x1AD00 initializes the keyboard dynamics and 0x1AD98 integrates them.
 // The browser fixes the DOS frame-rate divisor so refresh rate cannot change handling.
@@ -24,7 +25,8 @@ const cabinYawLimit = 100*Math.PI/180;
 const cabinPitchLimit = 45*Math.PI/180;
 const chasePitchLimit = 75*Math.PI/180;
 const wrap = a => (a % fullTurn + fullTurn) % fullTurn;
-const demoRateAdjustedStep = index => index > 0 ? Math.max(1,Math.trunc(20*index/ticksPerSecond)) : 0;
+// QDEMO 0x11662..0x1167A forms (4*i-i)*4 / measuredRate: 12*i/rate.
+const demoRateAdjustedStep = index => index > 0 ? Math.max(1,Math.trunc(12*index/ticksPerSecond)) : 0;
 const fallbackBounds = Object.freeze({left:-cabBody.width/2,right:cabBody.width/2,
   back:-cabBody.length/2,front:cabBody.length/2,top:cabBody.base-cabBody.height,bottom:cabBody.base});
 
@@ -125,18 +127,21 @@ function chaseClearance(district,x,y,z,dx,dy,dz,cabTop) {
   const margin = 2/Math.hypot(dx,dy,dz);
   let limit = 1+margin;
   if (dx < 0) limit = Math.min(limit,-x/dx);
-  if (dx > 0) limit = Math.min(limit,(district.width*512-x)/dx);
+  if (dx > 0) limit = Math.min(limit,(district.width*architectureCellSize-x)/dx);
   if (dy < 0) limit = Math.min(limit,-y/dy);
-  if (dy > 0) limit = Math.min(limit,(district.height*512-y)/dy);
-  const left = Math.max(0,Math.floor(Math.min(x,x+dx)/512)-1);
-  const right = Math.min(district.width-1,Math.floor(Math.max(x,x+dx)/512)+1);
-  const top = Math.max(0,Math.floor(Math.min(y,y+dy)/512)-1);
-  const bottom = Math.min(district.height-1,Math.floor(Math.max(y,y+dy)/512)+1);
+  if (dy > 0) limit = Math.min(limit,(district.height*architectureCellSize-y)/dy);
+  const left = Math.max(0,Math.floor(Math.min(x,x+dx)/architectureCellSize)-1);
+  const right = Math.min(district.width-1,Math.floor(Math.max(x,x+dx)/architectureCellSize)+1);
+  const top = Math.max(0,Math.floor(Math.min(y,y+dy)/architectureCellSize)-1);
+  const bottom = Math.min(district.height-1,Math.floor(Math.max(y,y+dy)/architectureCellSize)+1);
   for (let row=top; row<=bottom; row++) {
     for (let col=left; col<=right; col++) {
       const block = district.diagnostics.blocks[district.tiles[row*district.width+col]&127];
-      const x0 = x-col*512, y0 = y-row*512;
-      for (const {segment:[wx,wy,sx,sy,upper,lower]} of block.wallRuns) {
+      const x0 = x-col*architectureCellSize, y0 = y-row*architectureCellSize;
+      for (const {segment:[rawX,rawY,rawSX,rawSY,rawUpper,rawLower]} of block.wallRuns) {
+        const wx=architectureXY(rawX), wy=architectureXY(rawY);
+        const sx=architectureXY(rawSX), sy=architectureXY(rawSY);
+        const upper=architectureZ(rawUpper), lower=architectureZ(rawLower);
         if (lower <= cabTop) continue;
         const det = dx*sy-dy*sx;
         if (!det) continue;
@@ -149,10 +154,10 @@ function chaseClearance(district,x,y,z,dx,dy,dz,cabTop) {
       for (const face of block.faces) {
         if (!face.floor) break; // BLK floors precede the walls.
         const [a] = face.vertices;
-        if (!a || a[2] < cabTop) continue;
-        const t = (a[2]-z)/dz;
+        if (!a || architectureZ(a[2]) < cabTop) continue;
+        const t = (architectureZ(a[2])-z)/dz;
         if (t < 0 || t > limit) continue;
-        const px = x0+t*dx, py = y0+t*dy;
+        const px = (x0+t*dx)/architectureScale, py = (y0+t*dy)/architectureScale;
         for (let k=2; k<face.vertices.length; k++) {
           const b = face.vertices[k-1], c = face.vertices[k];
           const ab = (b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0]);
@@ -208,26 +213,88 @@ function firstWallHit(district,x,y,dx,dy,zTop,zBottom) {
   return hit;
 }
 
-// 0x2620A..0x26392 projects five endpoints from the proposed position
-// along travel. The previous endpoints initially coincide at the spawn.
-function sweepCab(car,district,dx,dy) {
-  if (!dx && !dy) return null;
-  const table = district.start.sine;
-  const travel = district.start.mapDisplay?.bearings ?
-    16*bearing(dy,dx,district.start.mapDisplay.bearings) :
-    Math.round(Math.atan2(dx,dy)*2880/Math.PI);
-  const endpoints = [];
-  for (const offset of [-400,400,-208,208,0]) {
-    const heading = travel+offset;
-    const x = Math.floor(car.x+dx)+(120*sine(table,heading)>>11);
-    const y = Math.floor(car.y+dy)+(120*sine(table,heading+quarter)>>11);
-    const [px,py] = car.wallProbes?.[endpoints.length] ?? [Math.floor(car.x),Math.floor(car.y)];
-    const hit = firstWallHit(district,px,py,x-px,y-py,car.z,car.z);
-    if (hit) return hit;
-    endpoints.push([x,y]);
+// The HD car keeps its dimensions while the district is enlarged. Express
+// its whole body in logical map coordinates; the original 120-unit probes
+// otherwise extend 276 displayed units ahead of a 181-unit-long vehicle.
+// Projectile point sweeps retain their independent firstWallHit path above.
+function sweepCab(car,district,dx,dy,angle=car.angle) {
+  if (!dx && !dy && angle===car.angle) return null;
+  const bounds=district.taxiBounds ?? fallbackBounds;
+  const halfWidth=(bounds.right-bounds.left)/(2*architectureScale);
+  const halfLength=(bounds.front-bounds.back)/(2*architectureScale);
+  const across=(bounds.left+bounds.right)/(2*architectureScale);
+  const ahead=(bounds.front+bounds.back)/(2*architectureScale);
+  const zTop=20+(vehicleZ(car.z)+bounds.top-20)/architectureScale;
+  const zBottom=20+(vehicleZ(car.z)+bounds.bottom-20)/architectureScale;
+  const radius=Math.hypot(halfWidth+Math.abs(across),halfLength+Math.abs(ahead));
+  const left=Math.max(0,Math.floor((Math.min(car.x,car.x+dx)-radius)/512)-1);
+  const right=Math.min(district.width-1,Math.floor((Math.max(car.x,car.x+dx)+radius)/512)+1);
+  const top=Math.max(0,Math.floor((Math.min(car.y,car.y+dy)-radius)/512)-1);
+  const bottom=Math.min(district.height-1,Math.floor((Math.max(car.y,car.y+dy)+radius)/512)+1);
+  let hit=null;
+  function record(t,nx,ny) {
+    if (t>=0 && t<=1 && (!hit || t<hit.t)) hit={t,nx,ny};
   }
-  car.wallProbes = endpoints;
-  return null;
+  // Visit intermediate headings as well as the old/new body orientation.
+  // Rotation cannot swing the nose past a short wall between the old probes.
+  const rotation=(angle-car.angle+fullTurn*1.5)%fullTurn-fullTurn/2;
+  const turns=Math.max(1,Math.ceil(Math.abs(rotation)/80));
+  for (let turn=0; turn<=turns; turn++) {
+    const heading=car.angle+rotation*turn/turns;
+    // Match the rendered model orientation, including intermediate headings
+    // that fall between integer entries of the DOS sine lookup table.
+    const radians=heading*Math.PI/2880, fx=Math.sin(radians), fy=Math.cos(radians);
+    const rx=-fy, ry=fx;
+    const centerX=car.x+rx*across+fx*ahead, centerY=car.y+ry*across+fy*ahead;
+    const extentX=Math.abs(rx)*halfWidth+Math.abs(fx)*halfLength;
+    const extentY=Math.abs(ry)*halfWidth+Math.abs(fy)*halfLength;
+    if (dx<0 && centerX+dx-extentX<0) record(Math.max(0,(extentX-centerX)/dx),1,0);
+    if (dy<0 && centerY+dy-extentY<0) record(Math.max(0,(extentY-centerY)/dy),0,1);
+    if (dx>0 && centerX+dx+extentX>district.width*512) record(Math.max(0,(district.width*512-extentX-centerX)/dx),-1,0);
+    if (dy>0 && centerY+dy+extentY>district.height*512) record(Math.max(0,(district.height*512-extentY-centerY)/dy),0,-1);
+    for (let cy=top; cy<=bottom; cy++) for (let cx=left; cx<=right; cx++) {
+      const tile=district.tiles[cy*district.width+cx];
+      if (!(tile&127)) continue;
+      const id=(tile&127)*4+((tile>>>8)&3);
+      for (let at=district.wallOffsets[id]; at<district.wallOffsets[id+1]; at+=6) {
+        const walls=district.walls;
+        if (zBottom<=walls[at+4] || zTop>=walls[at+5]) continue;
+        const wx=cx*512+walls[at], wy=cy*512+walls[at+1], sx=walls[at+2], sy=walls[at+3];
+        const length=Math.hypot(sx,sy);
+        if (!length) continue;
+        const det=dx*sy-dy*sx;
+        if (det>0 && !(district.wallSides[at/6]&2)) continue;
+        const nx=-sy/length, ny=sx/length;
+        let enter=-Infinity, exit=Infinity, normalX=nx, normalY=ny, separated=false;
+        // Continuous separating-axis test: the two body axes and wall normal.
+        // Projecting the complete segment also catches tiny wall endpoints.
+        for (const [ax,ay] of [[rx,ry],[fx,fy],[nx,ny]]) {
+          const center=centerX*ax+centerY*ay;
+          const extent=halfWidth*Math.abs(rx*ax+ry*ay)+halfLength*Math.abs(fx*ax+fy*ay);
+          const first=wx*ax+wy*ay, last=(wx+sx)*ax+(wy+sy)*ay;
+          const low=Math.min(first,last)-center-extent, high=Math.max(first,last)-center+extent;
+          const velocity=dx*ax+dy*ay;
+          if (Math.abs(velocity)<1e-12) {
+            if (low>0 || high<0) { separated=true; break; }
+            continue;
+          }
+          const a=low/velocity, b=high/velocity;
+          const start=Math.min(a,b), end=Math.max(a,b);
+          if (start>enter) { enter=start; normalX=velocity>0 ? -ax : ax; normalY=velocity>0 ? -ay : ay; }
+          exit=Math.min(exit,end);
+          if (enter>exit) { separated=true; break; }
+        }
+        if (separated || exit<0 || enter>1) continue;
+        if (enter<0) {
+          const side=(centerX-wx)*nx+(centerY-wy)*ny, motion=dx*nx+dy*ny;
+          // Allow an already touching/overlapping car to move away or slide.
+          if (side*motion>=0) continue;
+          record(0,motion>0 ? -nx : nx,motion>0 ? -ny : ny);
+        } else record(enter,normalX,normalY);
+      }
+    }
+  }
+  return hit;
 }
 
 // 0x41484 tests the first and third BLK vertices as inclusive local bounds.
@@ -273,7 +340,7 @@ function followFloor(car,district) {
   let support = floorBelow(district,car.x,car.y,car.z)-rideHeight;
   if (district.start.demo) {
     car.supportZ = support; // 0x347EE samples only the cell under the cab origin.
-    // QDEMO builds DS:D4AC[i] as trunc(20*i/rate), with a minimum of one.
+    // QDEMO builds DS:D4AC[i] as trunc(12*i/rate), with a minimum of one.
     const step = () => demoRateAdjustedStep(car.fallSpeed >> 6);
     if (car.hover < 0) {
       car.z -= step();
@@ -301,10 +368,12 @@ function followFloor(car,district) {
     }
     return;
   }
-  for (const offset of [-400,400,2480,3280]) {
-    const heading = car.angle+offset;
-    const x = Math.trunc(car.x)+(supportRadius*sine(district.start.sine,heading)>>11);
-    const y = Math.trunc(car.y)+(supportRadius*sine(district.start.sine,heading+quarter)>>11);
+  const bounds=district.taxiBounds ?? fallbackBounds;
+  const sin=sine(district.start.sine,car.angle)/2048, cos=sine(district.start.sine,car.angle+quarter)/2048;
+  for (const [across,ahead] of [[bounds.left,bounds.front],[bounds.right,bounds.front],
+    [bounds.left,bounds.back],[bounds.right,bounds.back]]) {
+    const x=car.x+(ahead*sin-across*cos)/architectureScale;
+    const y=car.y+(ahead*cos+across*sin)/architectureScale;
     const height = floorBelow(district,x,y,car.z)-rideHeight;
     support = Math.min(support,height < car.supportZ-20 ? car.supportZ : height);
   }
@@ -447,13 +516,15 @@ function moveCab(car, district, keys) {
   car.velocity = step.velocity;
   const {dx,dy} = step;
   if (!dx && !dy && !rotation) return 0;
-  const hit = sweepCab(car,district,dx,dy);
+  const hit = sweepCab(car,district,dx,dy,newAngle);
   if (!hit) {
     car.x += dx; car.y += dy; car.angle = newAngle;
     return 0;
   }
-  // A probe can swing across the cab on a reversal. Its contact fraction
-  // is not a fraction of cab translation. Keep the last accepted origin.
+  // Advance to the swept body's contact point, leaving a tiny visible gap.
+  // The contact fraction is measured against the full cab translation.
+  const accepted=Math.max(0,hit.t-0.01/(architectureScale*Math.max(0.000001,Math.hypot(dx,dy))));
+  car.x+=dx*accepted; car.y+=dy*accepted;
   const dot = dx*hit.nx+dy*hit.ny;
   // The impact cone excludes both 45-degree endpoints (0x26435).
   const alongWall = dx*hit.ny-dy*hit.nx;
@@ -474,8 +545,9 @@ function moveCab(car, district, keys) {
   } else {
     const tx = (dx-dot*hit.nx), ty = (dy-dot*hit.ny);
     const slideAngle = wrap(car.angle+80*Math.sign(dot*alongWall));
-    if (!sweepCab(car,district,tx,ty)) {
-      car.x += tx; car.y += ty; car.angle = slideAngle;
+    const remaining=1-accepted;
+    if (!sweepCab(car,district,tx*remaining,ty*remaining,slideAngle)) {
+      car.x += tx*remaining; car.y += ty*remaining; car.angle = slideAngle;
     }
   }
   return Number(headOn); // SKIPIT 0x26489 requests the impact cue on this branch.
@@ -486,7 +558,7 @@ export function cameraPose(car, district) {
     car.angle*Math.PI/2880+car.lookYaw;
   const fx = Math.sin(angle), fy = Math.cos(angle);
   if (!car.camera) {
-    return {x:car.x,y:car.y,z:car.z+car.seatOffset,fx,fy,angle,pitch:car.lookPitch};
+    return {x:architectureXY(car.x),y:architectureXY(car.y),z:vehicleZ(car.z)+car.seatOffset,fx,fy,angle,pitch:car.lookPitch};
   }
   const floorLook = car.chaseFloorLook ?? 0;
   const distance = chaseRange.near+(car.chaseDistance-chaseRange.near)*Math.exp(-2*floorLook);
@@ -495,9 +567,10 @@ export function cameraPose(car, district) {
   const orbitPitch = chasePitch(car,car.chaseDistance,centerZ,bottom);
   const lift = floorLook > 0 ? centerZ-bottom+2 : distance*Math.tan(orbitPitch);
   const pitch = floorLook > 0 ? Math.max(-chasePitchLimit,Math.atan2(lift,distance)-floorLook) : orbitPitch;
-  const targetZ = car.z+centerZ;
-  const cabTop = car.z+(district.taxiBounds ?? fallbackBounds).top;
-  const clear = chaseClearance(district,car.x,car.y,targetZ,-fx*distance,-fy*distance,-lift,cabTop);
-  return {x:car.x-fx*distance*clear,y:car.y-fy*distance*clear,z:targetZ-lift*clear,
+  const targetZ = vehicleZ(car.z)+centerZ;
+  const cabTop = vehicleZ(car.z)+(district.taxiBounds ?? fallbackBounds).top;
+  const x=architectureXY(car.x), y=architectureXY(car.y);
+  const clear = chaseClearance(district,x,y,targetZ,-fx*distance,-fy*distance,-lift,cabTop);
+  return {x:x-fx*distance*clear,y:y-fy*distance*clear,z:targetZ-lift*clear,
     fx,fy,angle,pitch};
 }

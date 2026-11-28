@@ -4,6 +4,13 @@
 
 ; Directory entry i fills DS:27270 + 40*i (0x42A04–0x42A45). MAP ids refer
 ; to these descriptors through DS:ABA8, whose first entry is null.
+;
+; Wall height evidence: disk +6 is a signed world-unit span; disk +12 is
+; signed base Z. The inserted runtime bytes move these to +8 and +14.
+; 0x4311D..0x43141 stores baseZ - span in the temporary BSP geometry;
+; 0x43147..0x43155 stores baseZ. Render dispatch independently repeats the
+; subtraction at 0x40DB1..0x40DBF (uniform) and 0x40D53..0x40D60 (sectioned).
+; There is no vehicle-size multiplier in the BLK height interpretation.
 
 %macro emit_load_city_blocks_and_build_bsp_part_00 0
     %%fragment_start:

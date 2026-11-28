@@ -1,5 +1,6 @@
 import {drawSprite} from './indexed-screen.js';
 import {roofCaps} from './roof-caps.js';
+import {architectureScale,architectureCellSize} from './architecture.js';
 
 const planeIndex = (x,y) => (x&3)*16000+y*80+(x>>>2);
 
@@ -213,7 +214,7 @@ export function districtMesh(district) {
           const side = Math.sign(c[1]-a[1]);
           if (!side || tile >= 15) continue;
           const rect = [floorMap[0]+tile%5*64,floorMap[1]+Math.floor(tile/5)*64,64,64];
-          const period = 64 * 2**face.textureScale;
+          const period = 64 * 2**face.textureScale * architectureScale;
           const asphalt = Number(district.districtId === 1 && side > 0 && tile <= 2);
           const rotation = face.textureOrientation;
           for (let k = 2; k < face.vertices.length; k++) {
@@ -287,7 +288,7 @@ export function districtMesh(district) {
       }
       // These are visual occluders only; the DOS collision/support data stays
       // untouched. Negative material kind -5 bypasses all texture and lighting.
-      for (const cap of roofCaps(block,material => wallFlags(block,variant,material,district.flags))) {
+      for (const cap of roofCaps(block,material => wallFlags(block,variant,material,district.flags),architectureCellSize)) {
         for (const j of [0,1,2,0,2,3]) {
           vertices.push(...cap[j],0,0,0,0,1,1,0,0,-5);
           surfaceNodes.push(0);
@@ -300,7 +301,7 @@ export function districtMesh(district) {
         if (!rect || obj.scale <= 0) continue;
         const width = rect[2]*obj.scale/64, height = rect[3]*obj.scale/64;
         // 0x4275C uses 0x30F38's local X/Y lookup, indexed by arithmetic shift right five.
-        const xOrigin = (obj.x >> 5)*32, yOrigin = (obj.y >> 5)*32;
+        const xOrigin = obj.renderX ?? (obj.x >> 5)*32, yOrigin = obj.renderY ?? (obj.y >> 5)*32;
         const fixture = district.bankNames[bank] === 'KOBJECTS.SPR' && coreFixtures.get(obj.image);
         let emission = 0;
         if (fixture) {
@@ -334,7 +335,10 @@ export function districtMesh(district) {
   const hazardRanges = hazardRects.concat(hazardRects.slice(14)).map((rect,i) => {
     if (i===0) return actorSprite(rect,0.5,14);
     if (i<=12) return actorSprite(rect,2,14,district.blastOffsets[i-1]);
-    return actorSprite(rect,0.75,i===13 ? -8 : district.gunViews ? 0 : -16,[0,0],i>=18);
+    // Wall guns use scale 384, tracers inherit half of that (192). With
+    // the actor projector's /512 conversion these are 0.75 and 0.375.
+    // Projectile Z comes from the shot instance in both game modes.
+    return actorSprite(rect,i===13 ? 0.75 : 0.375,i===13 ? -8 : 0,[0,0],i>=18);
   });
   const turretRanges = (district.gunViews ?? []).map(([flash,image,x,y]) =>
     actorSprite(turretRects[Number(flash)][image],0.75,-28,[x,y]));

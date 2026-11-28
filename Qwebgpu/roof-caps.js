@@ -2,9 +2,9 @@
 // A shear makes every integer-coordinate wall non-horizontal for the sweep,
 // including a lone facade whose building continues into the neighboring cell.
 // The resulting trapezoids need no polygon fan across streets or courtyards.
-const cellSize=512, shear=Math.SQRT2, epsilon=0.000001;
+const shear=Math.SQRT2, epsilon=0.000001;
 
-function clipWall(a,b) {
+function clipWall(a,b,cellSize) {
   const dx=b[0]-a[0], dy=b[1]-a[1];
   let first=0, last=1;
   for (const [p,q] of [[-dx,a[0]],[dx,cellSize-a[0]],[-dy,a[1]],[dy,cellSize-a[1]]]) {
@@ -17,14 +17,14 @@ function clipWall(a,b) {
   return [[a[0]+first*dx,a[1]+first*dy],[a[0]+last*dx,a[1]+last*dy]];
 }
 
-export function roofCaps(block,flagsFor) {
+export function roofCaps(block,flagsFor,cellSize=512) {
   const edges=new Map();
   for (const face of block.faces) {
     if (face.floor || face.vertices.length<4 || face.material>=block.variantStride ||
         (block.surfaceNodes?.[face.surface] ?? 0)<0) continue;
     // Masked, two-sided and nonblocking walls are not building boundaries.
     if (flagsFor(face.sideMaterial)&11) continue;
-    const clipped=clipWall(face.vertices[0],face.vertices[1]);
+    const clipped=clipWall(face.vertices[0],face.vertices[1],cellSize);
     if (!clipped) continue;
     const [a,b]=clipped;
     const key=p => p.map(v => Math.round(v/epsilon)).join(',');

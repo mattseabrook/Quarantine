@@ -242,6 +242,49 @@ the surface. These distances describe distinct queries. The projectile
 routine at `0x2694C` uses strict 48-unit XY limits and an absolute
 projectile Z threshold of −25. None of these routines specifies a roof height.
 
+The model eye and exterior proportions are port choices; the DOS routines do
+not establish the dimensions of that third-party model. The browser retains
+the accepted 181.26-unit-long exterior. Its temporary 20-unit modeled-eye fit
+made it too small relative to street signs and was removed. Instead the HD
+renderer applies a uniform 2.3× XYZ architecture transform with street Z=20 fixed,
+including raised floors, roof caps, antenna assemblies and wall lights, while retaining original
+BLK and simulation coordinates. This is a requested presentation adjustment,
+not evidence of an original DOS building-height multiplier.
+
+The HD port's collision adaptation now uses the fitted cab box divided by that
+presentation scale, with full-segment sweeps and corner support queries. Keeping
+the original 120-unit probes after enlarging the district made them reach 276
+displayed units ahead of the visible 181-unit-long car. This port correction
+does not change the original DOS probe interpretation above or projectile rules.
+
+Wall heights are independent of these cab queries. Disk group-1 signed word
+`+6` is the span and `+12` is base Z. The loader's two inserted bytes move them
+to runtime `+8` and `+14`. BSP construction at `0x4311D–0x43155` stores
+`baseZ - span` and base Z; render dispatch at `0x40DB1–0x40DBF` uses the same
+subtraction. Weapon King entrance records in Core blocks `0x34` and `0x35`
+(zero-based BLK indices, material variant 2) have span 64, base Z 20 and top
+Z −44. Their upper sign panels and neighboring walls have their own spans.
+The DOS decoder applies no uniform multiplier to these heights. The browser's
+HD architecture scale is applied separately when constructing render geometry.
+MAP origins and camera/actor placement follow the same XY transform. Antenna
+pieces scale their dimensions and base spacing together; the original material
+aspect ratios and decoded source coordinates are retained.
+
+The tracer's mount Z is −8 (`0x4D923–0x4D932`). Spawn subtracts eight more
+at `0x4D817–0x4D822`, giving projectile Z −16, and halves scale 384 to 192
+at `0x4D7C5–0x4D7DB`. The callback at `0x4DB28` tests cab overlap before
+the wall probe and allows its first three movement updates without a wall
+probe. Its hit path calls `0x2CFF0` with EBX=3 at `0x4DBE0–0x4DBE9`;
+that retail feedback routine does not call hull/armor damage (`0x31F88`).
+This differs from QDEMO's wrapper, which first applies three damage.
+The browser's former ten-point retail tracer penalty was an added rule.
+
+Enemy missiles launch at Z −16 (`0x4F2D8–0x4F2EA`), then add four while
+Z is negative (`0x220E6–0x220F7`). Their wall obstruction precedes cab overlap
+at `0x22158` and `0x2218C`. The absolute −25 projectile threshold is a logical
+contact rule, not the cab's physical roof; replacement mesh size must not alter
+these heights, tests, or the ENEMY.ENC missile damage.
+
 
 ## District trigger tiles
 

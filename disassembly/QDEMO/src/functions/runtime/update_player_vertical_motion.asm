@@ -1,9 +1,12 @@
 ; Integrates support height, active ascent and descent, then schedules the landing effect.
-; QDEMO uses DS:D4AC[power>>2] = max(1,floor(20*(power>>2)/rate)) for movement.
+; QDEMO uses DS:D4AC[power>>2] = max(1,floor(12*(power>>2)/rate)) for movement.
 ; Ascent subtracts 12 power per update; descent adds 12 up to power 48.
 ; J seeds DS:D4D4 from DS:D4BA (DS:D4AC[7]); landing consumes one count.
 ; A positive remainder queues sound selector 4 if DS:763C is clear, and leaves
 ; twice that count in power.
+; 0x347EE queries the supporting floor, not the ceiling. At 0x347FC the
+; subtraction of 0x14 sets the level-road player eye 20 units above that floor.
+; This is a world-scale reference, not a recovered exterior-vehicle dimension.
 update_player_vertical_motion:
     push ebx ; 000347d8 53
     push ecx ; 000347d9 51
@@ -14,7 +17,7 @@ update_player_vertical_motion:
     mov ebp,esp ; 000347de 89e5
     mov dx, word [0x114ce] ; 000347e0 668b15ce140100 | obj2+0x114ce
     mov bx, word [0x1146c] ; 000347e7 668b1d6c140100 | obj2+0x1146c
-    call find_player_ceiling ; 000347ee e8e9020100
+    call find_floor_below_player ; 000347ee e8e9020100
     mov ebx,eax ; 000347f3 89c3
     mov cx, word [0x114b2] ; 000347f5 668b0db2140100 | obj2+0x114b2
     sub ebx,0x14 ; 000347fc 83eb14

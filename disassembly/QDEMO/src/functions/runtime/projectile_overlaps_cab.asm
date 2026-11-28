@@ -1,5 +1,7 @@
 ; QDEMO 0x0002b4d0. Corresponding retail routine 0002694C (projectile_overlaps_cab); inferred from instruction and operand sequence.
 ; Retail evidence for this identification: Tests the current projectile at Z >= -25 against strict cab X/Y bounds of plus or minus 48.
+; Z is absolute world Z, not projectile Z minus cab Z. This deliberately
+; generous logical hit region is independent of a replacement exterior mesh.
 projectile_overlaps_cab:
 insn_0002b4d0:
     push ebx ; 0002b4d0 53

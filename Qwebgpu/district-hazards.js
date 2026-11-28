@@ -1,7 +1,8 @@
 import {bearing,sine} from './bearing.js';
 
-// Qwebgpu gameplay choice for a wall tracer that reaches the cab.
-const wallTracerDamage = 10;
+// QDEMO's hit wrapper applies 3 hull damage without armor. SKIPIT's tracer
+// callback requests its impact feedback without calling the hull-damage path.
+const demoWallTracerDamage = 3;
 
 // SKIPIT 0x25CD0 has asymmetric boundaries around the south sector.
 function cardinal(angle) {
@@ -50,7 +51,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
       if (space && !state.phase && slot>=0) {
         const [ox,oy,heading] = [[32,256,90],[480,256,270],[256,32,0],[256,480,180],[256,256,0]][slot];
         state.guns.set(cell,{x:x*512+ox,y:y*512+oy,heading,step:0,timer:0,burst:0,cooldown:0,
-          centerMount:slot===4,cycles:demo || slot===0 ? 2 : 1,haloFirst:0,haloCount:0});
+          centerMount:slot===4,cycles:slot===0 ? 2 : 1,haloFirst:0,haloCount:0});
       }
       if (space && state.phase && marker>=1 && marker<=3) {
         let lane = (tables.roadClasses ?? district.collision)[tile&127];
@@ -89,13 +90,13 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
         const power = demo ? 56 : 30;
         car.hover = -1;
         car.fallSpeed = power<<4;
-        if (demo) car.landingCounter = Math.max(1,Math.trunc(20*(power>>3)/rate));
+        if (demo) car.landingCounter = Math.max(1,Math.trunc(12*(power>>3)/rate));
       }
     }
   }
   // 0x4D4A0 walks a 17-word sweep, then opens a timed firing window.
   const duration = units => Math.max(1,Math.trunc(units*rate/12));
-  const distance = units => Math.max(1,Math.trunc(units*(demo ? 20 : 12)/rate));
+  const distance = units => Math.max(1,Math.trunc(units*12/rate));
   for (const [cell,gun] of state.guns) {
     if (Math.abs((gun.x>>9)-cx)>5 || Math.abs((gun.y>>9)-cy)>5) {
       state.guns.delete(cell);
@@ -136,7 +137,10 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
     }
     if (!gun.cooldown && state.shots.size<20) {
       const dx = [0,1,0,-1][gun.heading/90], dy = [1,0,-1,0][gun.heading/90];
-      state.shots.add({x:gun.x+dx*distance(16),y:gun.y+dy*distance(16),z:demo ? -20 : undefined,heading:gun.heading,
+      // QDEMO 0x21135..0x21153 adds 8 to gun Z=-28. SKIPIT
+      // 0x4D817..0x4D822 subtracts 8 from gun Z=-8. These are world
+      // heights, independent of the model, camera and inferred roof caps.
+      state.shots.add({x:gun.x+dx*distance(16),y:gun.y+dy*distance(16),z:demo ? -20 : -16,heading:gun.heading,
         dx:dx*distance(60),dy:dy*distance(60),life:30,haloFirst:0,haloCount:0});
       gun.cooldown = demo ? 7 : duration(7);
     }
@@ -150,7 +154,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
     }
     const expired = --shot.life<0;
     if (shot.missile && !expired) shot.z = Math.min(0,shot.z+4);
-    const height = shot.z ?? -16;
+    const height = shot.z;
     // 0x2694C checks an absolute projectile height and strict XY bounds.
     // Tracers test the cab before wall obstruction. Missiles reverse that order.
     const cabHit = height>=-25 && Math.abs(shot.x-Math.trunc(car.x))<48 &&
@@ -167,7 +171,7 @@ export function tickDistrictHazards(car,district,rate,wallHit) {
         else car.mineSound = randomBit();
       } else state.shots.delete(shot);
       if (!expired && cabHit && !(shot.missile && wall)) {
-        const damage = shot.missile ? district.missileDamage : demo ? 3 : wallTracerDamage;
+        const damage = shot.missile ? district.missileDamage : demo ? demoWallTracerDamage : 0;
         car.health = Math.max(0,car.health-damage);
         if (!car.landingStep) {
           car.landingStep=1;

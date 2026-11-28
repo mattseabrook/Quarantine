@@ -3,6 +3,10 @@
 ; Evidence: Queries supporting floors and ceilings, integrates falling and hover motion, and handles landing state.
 ; Unlike the compact QDEMO routine, this retail path samples cab-footprint support,
 ; includes district-specific lift handling, and applies its own landing effects.
+; Level-road eye reference: the support samples subtract 0x14 from floor Z
+; (including 0x31905 and 0x31AF7). Their radius-100 XY positions are terrain
+; probes, not exterior body dimensions; fitting a replacement mesh to their
+; longitudinal separation does not preserve this 20-unit eye height.
 
 %macro emit_update_player_vertical_motion_part_00 0
     %%fragment_start:

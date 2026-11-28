@@ -1,6 +1,8 @@
 ; Builds 256-entry rate tables from the measured game rate.
-; DS:D4AC[i] is max(1, floor(20*i/rate)) for i > 0;
+; DS:D4AC[i] is max(1, floor(12*i/rate)) for i > 0;
 ; DS:D29C[i] is max(1, floor(rate*i/12)).
+; The numerator at 0x11662..0x1166B is (4*i-i)*4 = 12*i.
+; The former 20*i annotation was incorrect; the instructions are unchanged.
 build_rate_adjustment_tables:
 insn_00011640:
     push ebx ; 00011640 53
@@ -64,7 +66,7 @@ insn_0001167c:
     times 2 - ($ - insn_0001167c) db 0
     db 0x8d, 0x04, 0x4d, 0x00, 0x00, 0x00, 0x00 ; 0001167e lea eax, [ecx*2] | 8d044d00000000
 insn_00011685:
-    ; Store floor(20*i/rate) in DS:D4AC[i]; zero entries for i>0 become one below.
+    ; Store floor(12*i/rate) in DS:D4AC[i]; zero entries for i>0 become one below.
     mov [eax+0xd4ac],dx ; 00011685 668990acd40000 | obj2+0xd4ac
     times 7 - ($ - insn_00011685) db 0
 insn_0001168c:

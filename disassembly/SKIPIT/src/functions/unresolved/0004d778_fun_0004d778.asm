@@ -1,6 +1,10 @@
 ; Analyzer entry: 0004d778
 ; Analyzer symbol: FUN_0004d778
 ; Boundary and name are provisional until independently verified.
+; Recovered role: spawn_wall_tracer. 0x4D7C5..0x4D7DB halves mount scale
+; 384 to 192. 0x4D817..0x4D822 subtracts 8 from mount Z=-8, so the shot
+; stays at absolute world Z=-16. Lifetime is 30 and wall grace is 3 updates.
+; The callback is 0x4DB28, with cab overlap before wall obstruction.
 
 %macro emit_function_0004d778_part_00 0
     %%fragment_start:

@@ -84,13 +84,13 @@ test('floor support uses the cab footprint instead of distant probes', () => {
   assert.equal(car.z,-10);
 });
 
-test('QDEMO jump ascent uses its 20-unit rate-adjustment table', () => {
+test('QDEMO jump ascent uses its 12-unit rate-adjustment table', () => {
   const world = district(), car = newDriver(world);
   world.start.demo = true;
   car.hover = -1;
   car.fallSpeed = 60 << 4;
   driveTick(car,world,new Set());
-  assert.equal(car.z,-8);
+  assert.equal(car.z,-5);
   assert.equal(car.fallSpeed,48 << 4);
   assert.equal(car.hover,-1);
 });
@@ -100,14 +100,14 @@ test('QDEMO jump consumes its rate-adjusted landing counter', () => {
   world.start.demo = true;
   const car = newDriver(world);
   startHover(car,60);
-  assert.equal(car.landingCounter,4);
+  assert.equal(car.landingCounter,2);
   car.hover = 1;
   car.z = 0;
   car.fallSpeed = 48 << 4;
   driveTick(car,world,new Set());
   assert.equal(car.hover,0);
-  assert.equal(car.landingCounter,3);
-  assert.equal(car.fallSpeed,6 << 4);
+  assert.equal(car.landingCounter,1);
+  assert.equal(car.fallSpeed,2 << 4);
 });
 
 test('QDEMO nitro spends one charge and unlocks after 40 driving ticks', () => {

@@ -9,14 +9,14 @@ const root=fileURLToPath(new URL('.',import.meta.url));
 const output=path.join(root,'dist'), stage=path.join(root,'dist.new');
 await rm(stage,{recursive:true,force:true});
 await mkdir(stage,{recursive:true});
-const options={absWorkingDir:root,bundle:true,format:'esm',target:'es2022',minify:true,
+const options={absWorkingDir:root,bundle:true,splitting:true,format:'esm',target:'es2022',minify:true,
   sourcemap:true,legalComments:'linked',entryNames:'[name]-[hash]',outdir:stage,
   external:['./vendor/truemotion1/*'],metafile:true};
 
 try {
-  // Worker boundaries remain independent bundles. Keep the LGPL decoder as
+  // Workers share ESM chunks while retaining separate entry points. Keep the LGPL decoder as
   // separate, unmodified ES modules, with its source and license beside it.
-  const workers=await build({...options,entryPoints:['avi-worker.js','district-worker.js']});
+  const workers=await build({...options,entryPoints:['avi-worker.js','district-worker.js','taxi-worker.js']});
   const workerNames=new Map(Object.entries(workers.metafile.outputs)
     .filter(([,info]) => info.entryPoint)
     .map(([name,info]) => [path.basename(info.entryPoint),path.basename(name)]));
